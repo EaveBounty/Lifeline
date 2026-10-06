@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.eavebounty.lifeline"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

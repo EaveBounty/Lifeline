@@ -3,16 +3,23 @@
 /// 无同步根时所有 Async provider 返回空默认值，不抛错。
 library;
 
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/constants.dart';
+import '../core/logging.dart';
 import '../core/platform/io_platform.dart';
 import '../core/result.dart';
 import '../services/compile/resume_compiler.dart';
 import '../services/secrets/secret_store.dart';
 import 'config/app_config.dart';
 import 'db/record_index_factory.dart';
+
+/// 内存索引（打开失败时的兜底；纯 Dart，全平台可用）。
+import 'db/record_index_web.dart' show MemoryRecordIndex;
 import 'models/ai_provider.dart';
 import 'models/app_settings.dart';
 import 'models/attachment.dart';
@@ -120,14 +127,36 @@ class SyncRootController extends Notifier<SyncRootState> {
   }
 }
 
-/// 索引数据库；无根时为 null。
+/// App 私有支持目录（io 端由 main 注入；web/未注入时为 null）。
+///
+/// 索引库是**设备本地、可重建**的派生缓存，放这里可避免
+/// Android 分区存储下无法在外部同步文件夹内打开 SQLite（code 14）。
+final appSupportDirProvider = Provider<String?>((ref) => null);
+
+/// 索引数据库；无根时为 null。打开失败时回退内存索引（本次会话），不崩溃。
 final databaseProvider = Provider<RecordIndex?>((ref) {
   final path = ref.watch(syncRootProvider.select((s) => s.path));
   if (path == null) return null;
-  final indexPath = p.join(path, SyncLayout.dataDir, SyncLayout.indexFile);
-  final db = openRecordIndex(indexPath);
-  ref.onDispose(db.close);
-  return db;
+  final supportDir = ref.watch(appSupportDirProvider);
+  final indexPath = supportDir == null
+      // Web / 未注入支持目录：沿用同步根（web 为内存 FS，忽略路径）。
+      ? p.join(path, SyncLayout.dataDir, SyncLayout.indexFile)
+      // 原生：放 App 私有目录，文件名按同步根哈希区分。
+      : p.join(
+          supportDir,
+          'index',
+          '${sha1.convert(utf8.encode(path)).toString().substring(0, 16)}.sqlite',
+        );
+  try {
+    final db = openRecordIndex(indexPath);
+    ref.onDispose(db.close);
+    return db;
+  } catch (e, st) {
+    appLog.warning('索引库打开失败（$indexPath），本次会话回退内存索引: $e', e, st);
+    final mem = MemoryRecordIndex();
+    ref.onDispose(mem.close);
+    return mem;
+  }
 });
 
 // --- Settings ---

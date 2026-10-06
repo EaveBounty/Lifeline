@@ -268,62 +268,73 @@ class _ItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(item.title,
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-              ),
-              if ((item.meta ?? '').isNotEmpty)
-                Text(item.meta!,
-                    style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 12)),
-            ],
-          ),
-          if ((item.subtitle ?? '').isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(item.subtitle!,
-                  style: TextStyle(color: theme.colorScheme.primary)),
+    final recordId = item.sourceRecordId;
+    final tappable = recordId != null && recordId.isNotEmpty;
+    return InkWell(
+      onTap: tappable ? () => context.push('/records/$recordId') : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(item.title,
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600)),
+                ),
+                if ((item.meta ?? '').isNotEmpty)
+                  Text(item.meta!,
+                      style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 12)),
+                if (tappable) ...[
+                  const SizedBox(width: 2),
+                  Icon(Icons.chevron_right,
+                      size: 18, color: theme.colorScheme.outline),
+                ],
+              ],
             ),
-          if (item.bullets.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            ...item.bullets.map((b) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(top: 6),
-                        child: Icon(Icons.circle, size: 5),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child:
-                              Text(b, style: const TextStyle(height: 1.5))),
-                    ],
-                  ),
-                )),
+            if ((item.subtitle ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(item.subtitle!,
+                    style: TextStyle(color: theme.colorScheme.primary)),
+              ),
+            if (item.bullets.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              ...item.bullets.map((b) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 6),
+                          child: Icon(Icons.circle, size: 5),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child:
+                                Text(b, style: const TextStyle(height: 1.5))),
+                      ],
+                    ),
+                  )),
+            ],
+            if ((item.description ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(item.description!,
+                  style: TextStyle(
+                      height: 1.5, color: theme.colorScheme.onSurfaceVariant)),
+            ],
+            if (item.tags.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              TagChips(tags: item.tags),
+            ],
           ],
-          if ((item.description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(item.description!,
-                style: TextStyle(
-                    height: 1.5, color: theme.colorScheme.onSurfaceVariant)),
-          ],
-          if (item.tags.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            TagChips(tags: item.tags),
-          ],
-        ],
+        ),
       ),
     );
   }

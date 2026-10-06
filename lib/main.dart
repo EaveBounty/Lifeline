@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
 import 'core/constants.dart';
@@ -31,6 +32,16 @@ Future<void> main() async {
 
   final config = await AppConfig.load();
 
+  // 索引库放 App 私有目录（设备本地、可重建），避免 Android 外部存储无法开 SQLite。
+  String? supportDir;
+  if (!kIsWeb) {
+    try {
+      supportDir = (await getApplicationSupportDirectory()).path;
+    } catch (e) {
+      appLog.warning('获取 App 支持目录失败，索引库回退同步根: $e');
+    }
+  }
+
   // A4：启动即校验记忆的同步根；失效则清空并回到首启页，避免在缺失父目录开库。
   final remembered = config.syncRoot;
   if (remembered != null) {
@@ -49,7 +60,10 @@ Future<void> main() async {
   }
 
   final container = ProviderContainer(
-    overrides: [appConfigProvider.overrideWithValue(config)],
+    overrides: [
+      appConfigProvider.overrideWithValue(config),
+      if (supportDir != null) appSupportDirProvider.overrideWithValue(supportDir),
+    ],
   );
 
   // Web 演示：仅在 `?demo=1` 时挂载内存根并写入种子数据，不影响正常路径。

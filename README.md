@@ -164,13 +164,13 @@ lifeline/
 ├── data/
 │   ├── profile.json         # 单例信息表
 │   ├── records/<category>/<uuid>.json   # 一条一文件
-│   ├── index.sqlite         # 派生索引（可重建，建议 gitignore）
 │   └── resumes/<id>/{meta.json,spec.json,resume.pdf,resume.docx,resume.md}
 ├── attachments/<yyyy>/<sha1[-8]>-<原文件名>
 └── .lifeline/state.json     # schema 版本 / 迁移 / 最近编译状态
                              # .lifeline/vault.dat 可选：加密密钥保险库（随同步，见 §2）
 ```
 
+> `index.sqlite`（派生索引）**已移到 App 私有目录**（设备本地、可重建），不放在同步根——避免 Android 分区存储下无法在外部文件夹开 SQLite（`code 14`）。
 > 密钥降级文件 `secrets.local.json` **不在同步根内**，位于 App 支持目录，默认不同步。
 > 启动时会 `probe` 校验记忆的同步根；失效则清空并回到首启页。
 
@@ -182,7 +182,7 @@ lifeline/
 - **Record**：`category`（education/experience/projects/awards/publications/certificates/skills/…）、`title`、`organization`、`role`、`start_date`/`end_date`、`description`(Markdown)、`highlights[]`(STAR 量化)、`tags[]`、`fields{}`(分类专属键值)、`attachments[]`(相对路径)、`links[]`、`source{}`、`ai{}`、`created_at/updated_at`、`status`、`order`。
 - **附件**：文件本身 + 记录内相对路径数组为真相源；SQLite `attachments` 表仅为可重建索引。
 - **写入**：一律**先写临时文件再原子 rename**；冲突时保留 `.conflict` 副本，绝不静默覆盖。
-- **索引**：`drift` 在启动与文件变更时增量重建；删除 `index.sqlite` 可 100% 恢复。
+- **索引**：`drift` 在启动与文件变更时增量重建；索引库位于 App 私有目录（按同步根哈希分文件），删除后可由 JSON **100% 重建**。
 
 > 权威 schema、分类枚举、迁移与冲突细则见 [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md)（与 `ARCHITECTURE.md` §4 对齐）。
 
@@ -377,3 +377,4 @@ DOCX / Markdown 接受模板参数（DOCX 保持单列 ATS，可选「modern」�
 - 2026-10-06 岗位画像扩充至 **60 类**（细分行业 + 职级：技术/产品设计/商科/泛商科/文教/医药科学/工程/法律公职/人力行政），`match` 支持中英混合与行业+职级加权；导出向导新增**模板可视化预览**（`lib/features/export/template_preview.dart`，纯自绘缩略图 + 放大预览）；新增真实模型联测脚本 `tool/ai_eval_live_test.dart`（本地 Ollama OpenAI 兼容，端到端跑通 AI 精评）。
 - 2026-10-07 新增**加密密钥保险库**（可同步）：`lib/services/secrets/`（`crypto_vault.dart` 纯逻辑信封加密、`vault_store.dart` IO/解锁态、`secret_store.dart` 门面、`vault_providers.dart` 控制器）；API Key 经口令 + PBKDF2-HMAC-SHA256(210000) + AES-256-GCM（wrapped DEK + 数据两段）加密后写入 `<SyncRoot>/.lifeline/vault.dat`，外层 `LFV1` 换行 base64 仅作混淆（明确「混淆≠安全」）；多设备同口令解锁、设备 DEK 缓存自动解锁、迁移旧密钥、设置页入口 `/settings/vault`；新增 `test/crypto_vault_test.dart`（6 例）。
 - 2026-10-07 密钥保险库安全加固（v0.4.0，经独立安全审查）：锁定态 `read/readAll` **不再回退旧后端**（防绕过锁定）；`write/delete` 锁定态抛受控错误；`migrateFromLocal` 默认删除旧源键；crypto 层拒绝空/短口令（<8）；解锁按信封 `iters` 派生（支持 KDF 升级）；`rewrap` 改为**真最小重包**（仅重包 DEK，数据密文不变）；`forgetDevice` 诚实返回成败；`ai_settings` 锁定时引导解锁。测试增至 72。
+- 2026-10-07 移动端修复（v0.4.1）：索引库移至 App 私有目录（修复 Android `SqliteException(14)`）、存储权限声明+运行时申请（修复移动端选不了文件夹）、附件预览支持 PDF 内嵌/文本/系统应用打开、首页简历条目可点击跳转记录详情；`compileSdk 37`；新增 `permission_handler`、`open_filex`。

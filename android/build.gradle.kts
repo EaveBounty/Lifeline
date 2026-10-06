@@ -28,12 +28,12 @@ gradle.projectsEvaluated {
         try {
             androidExt.javaClass
                 .getMethod("compileSdkVersion", Int::class.javaPrimitiveType)
-                .invoke(androidExt, 36)
+                .invoke(androidExt, 37)
         } catch (_: Throwable) {
             try {
                 androidExt.javaClass
                     .getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType)
-                    .invoke(androidExt, 36)
+                    .invoke(androidExt, 37)
             } catch (_: Throwable) {
                 // 忽略：部分扩展无此方法
             }

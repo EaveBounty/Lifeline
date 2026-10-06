@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/platform/android_permissions.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/root_manager.dart';
 import 'sync_guide_page.dart';
@@ -26,6 +27,10 @@ class _SyncRootSetupPageState extends ConsumerState<SyncRootSetupPage> {
   Future<void> _pick() async {
     setState(() => _busy = true);
     try {
+      if (!await ensureStorageAccess()) {
+        if (mounted) await _showPermissionDialog();
+        return;
+      }
       final path = await FilePicker.getDirectoryPath(
         dialogTitle: '选择 Lifeline 同步文件夹',
       );
@@ -36,6 +41,33 @@ class _SyncRootSetupPageState extends ConsumerState<SyncRootSetupPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _showPermissionDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('需要存储访问权限'),
+        content: const Text(
+          '读取/写入所选的同步文件夹需要外部存储访问权限。\n'
+          '请在系统设置中为「履痕」开启「所有文件访问」（Android 11+）'
+          '或存储权限后重试。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              openAppPermissionSettings();
+            },
+            child: const Text('去设置'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _useWebDemo() async {

@@ -24,7 +24,7 @@
 ├── data/
 │   ├── profile.json               # 单例：身份/联系方式/求职意向/自我评价/偏好
 │   ├── records/<category>/<uuid>.json     # 一条一文件
-│   ├── index.sqlite               # 派生索引（可重建，建议 .gitignore）
+│   ├── index.sqlite 的替代说明：派生索引库已移至 App 私有目录（设备本地、可重建），不在同步根
 │   └── resumes/<resume-id>/
 │       ├── meta.json              # 岗位/企业/要求/用途/状态/版本/评分
 │       ├── spec.json              # 该定向简历的 ResumeDocument（裁剪后）
