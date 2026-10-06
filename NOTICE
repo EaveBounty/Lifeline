@@ -1,0 +1,122 @@
+# NOTICE — 第三方组件与资产登记
+
+> 本文件登记 Lifeline · 履痕（`EaveBounty/Lifeline`）在**源代码依赖**与**发行包内嵌资产**两个层面使用/分发的第三方软件、库、模板与字体，及其许可证。
+> 版权方：长沙市果垂素宇工程设计有限公司。主程序许可：PolyForm Noncommercial License 1.0.0（见 `LICENSE`）。
+>
+> **合规红线：发行包内禁止包含 GPL / AGPL / SSPL 等强传染或与 PolyForm Noncommercial 不兼容的资产。** 新增内嵌资产前必须逐项核对许可证并更新本文件。
+
+---
+
+## A. 源代码依赖（Dart / Flutter，来自 pub.dev）
+
+版本以 `pubspec.yaml` / `pubspec.lock` 为准；下表为锁定基线（构建时以 lock 文件为准）。
+
+| 组件 | 版本（基线） | 许可证 | 版权 / 维护方 | 来源 |
+|---|---|---|---|---|
+| Flutter SDK / framework | 3.44.3 | BSD-3-Clause | Google LLC / The Flutter Authors | flutter.dev |
+| Dart SDK | 3.12.2 | BSD-3-Clause | Google LLC / The Dart Authors | dart.dev |
+| `flutter_localizations` / `flutter_test` | (SDK) | BSD-3-Clause | The Flutter Authors | flutter.dev |
+| `cupertino_icons` | ^1.0.8 | MIT | Flutter Authors | pub.dev |
+| `flutter_riverpod` | ^3.0.0 | MIT | Rémi Rousselet 等 | pub.dev |
+| `go_router` | ^18.0.2 | BSD-3-Clause | The Flutter Authors (flutter.dev) | pub.dev |
+| `drift` | ^2.28.0 | MIT | Simon Binder | pub.dev |
+| `drift_flutter` | ^0.2.4 | MIT | Simon Binder | pub.dev |
+| `drift_dev`（dev） | ^2.28.0 | MIT | Simon Binder | pub.dev |
+| `sqlite3`（Dart 绑定，drift 传递依赖） | 3.x | MIT | Simon Binder / 贡献者 | pub.dev |
+| SQLite（C 库本体，经 `sqlite3` 打包） | 3.x | Public Domain | SQLite Consortium / D. Richard Hipp | sqlite.org |
+| `yaml` | ^3.1.3 | MIT | The Dart Authors (dart-lang) | pub.dev |
+| `yaml_edit` | ^2.2.2 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `yaml_writer` | ^2.1.0 | BSD-3-Clause | 贡献者 | pub.dev |
+| `uuid` | ^4.5.1 | MIT | Yulian Kuncheff | pub.dev |
+| `crypto` | ^3.0.6 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `collection` | ^1.19.0 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `shared_preferences` | ^2.3.0 | BSD-3-Clause | The Flutter Authors | pub.dev |
+| `flutter_secure_storage` | ^9.2.2 | BSD-3-Clause | Julian Steenbakker 等 | pub.dev |
+| `file_picker` | ^8.1.0 | MIT | Miguel Ruivo | pub.dev |
+| `image_picker` | ^1.1.2 | BSD-3-Clause | The Flutter Authors | pub.dev |
+| `path_provider` | ^2.1.5 | BSD-3-Clause | The Flutter Authors (flutter.dev) | pub.dev |
+| `path` | ^1.9.0 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `url_launcher` | ^6.3.1 | BSD-3-Clause | The Flutter Authors | pub.dev |
+| `window_manager` | ^0.4.3 | MIT | LeanFlutter / LiJianying | pub.dev |
+| `watcher` | ^1.1.0 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `pdf` | ^3.11.1 | Apache-2.0 | David PHAM-VAN (dart_pdf) | pub.dev |
+| `printing` | ^5.13.2 | Apache-2.0 | David PHAM-VAN | pub.dev |
+| `flutter_markdown_plus` | ^1.0.3 | BSD-3-Clause | Foresight Mobile（原 Google `flutter_markdown` 兼容 fork） | pub.dev |
+| `dio` | ^5.7.0 | MIT | 杜文（wendux） / CFUG | pub.dev |
+| `intl` | ^0.20.2 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `logging` | ^1.3.0 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `csv` | ^6.0.0 | MIT | 贡献者 | pub.dev |
+| `build_runner`（dev） | ^2.4.13 | BSD-3-Clause | The Dart Authors (dart-lang) | pub.dev |
+| `flutter_lints`（dev） | ^5.0.0 | BSD-3-Clause | The Flutter Authors | pub.dev |
+
+> 说明：
+> - 大部分 Dart / Flutter 官方包采用三条款 BSD（BSD-3-Clause），需在再分发时保留版权声明与免责声明。
+> - `drift` / `sqlite3` 使 SQLite 原生库随包分发：**SQLite 本体为 Public Domain**，`sqlite3` Dart 绑定为 MIT。
+> - 上述依赖的完整许可文本可在各包 pub.dev 页面 "License" 标签或 `~/.pub-cache/hosted/pub.dev/<pkg>-<ver>/LICENSE` 获取；构建产物应附带合并的第三方许可清单（见 §D）。
+
+---
+
+## B. 运行期内嵌资产（随发行包分发）
+
+### B.1 编译/渲染引擎
+
+| 资产 | 版本 | 许可证 | 版权 / 来源 | 用途 |
+|---|---|---|---|---|
+| Typst 编译器二进制 | 0.15.1 | **Apache-2.0** | Typst GmbH / typst/typst | Windows/Linux 桌面 PDF 编译（`Process.run`） |
+| `typst`（Rust 库，经 FFI 嵌入，若启用） | — | Apache-2.0 | Typst GmbH | Android PDF（Typst FFI 路线） |
+| `typst_flutter`（可选增强） | 3.0.0 | Apache-2.0 | ajmalbuv | Android/iOS/桌面 Typst 原生嵌入（POC，风险项） |
+| `typst-as-lib`（可选自建底座） | — | MIT | 社区 | 自建 Typst cdylib 的 Rust 底座 |
+
+> Typst 本体 Apache-2.0。注意 Typst 官方发行**不含 CJK 字体**，中文字体由本应用另附（见 B.3）。
+
+### B.2 简历模板（Typst `.typ` / 数据驱动）
+
+| 模板 | 仓库 | 许可证 | 说明 |
+|---|---|---|---|
+| brilliant-CV | `github.com/yunanwg/brilliant-CV` | **Apache-2.0** | 功能全、模块化 |
+| modern-cv | `github.com/ptsouchlos/modern-cv` | **MIT** | 现代排版、YAML 数据 |
+| basic-typst-resume-template | `github.com/stuxf/basic-typst-resume-template` | **Unlicense** | ATS 友好单列 |
+| imprecv（备选） | `github.com/jskherman/imprecv` | Apache-2.0 | 数据驱动 |
+| vantage-typst（备选） | `github.com/sardorml/vantage-typst` | MIT | ATS 友好 |
+
+> **禁止内嵌**（许可不兼容）：`wusyong/resume.typ`（AGPL-3.0）、`elegaanz/vercanard`（GPL-3.0）等 GPL/AGPL 模板。
+> 内嵌模板须保留原作者版权与许可声明，并在此登记版本与来源。数据驱动模板改造为读取 `sys.inputs` 的派生版本，须在模板文件头注明原出处与许可。
+
+### B.3 字体
+
+| 资产（随包路径） | 许可证 | 来源 |
+|---|---|---|
+| `assets/fonts/DroidSansFallbackFull.ttf` | **Apache-2.0** | Droid / Android Open Source Project（Google Corp.） |
+| Noto Sans SC / Noto Serif SC（子集化，UI + PDF，可选） | **SIL Open Font License 1.1 (OFL-1.1)** | Google Fonts |
+| Source Han Sans / 思源黑体（备选） | **SIL Open Font License 1.1 (OFL-1.1)** | Adobe |
+| 其它内嵌拉丁字体 | 须为 OFL 或更宽松许可 | — |
+
+> 当前实际随包分发的 CJK 兜底字体为 `assets/fonts/DroidSansFallbackFull.ttf`（Apache-2.0），
+> 其许可全文见 `assets/fonts/LICENSE-Apache-2.0.txt`；版权：Copyright © 2006–2010 Google Corp.，
+> Droid 为 Google Corp. 商标。OFL 字体若启用，须随附 OFL 全文与版权声明。
+
+---
+
+## C. 合规规则
+
+1. **禁止 GPL / AGPL / LGPL（静态链接引发争议时）/ SSPL / Commons Clause** 等不兼容资产进入发行包。
+2. PolyForm Noncommercial 1.0.0 与 **Apache-2.0 / MIT / BSD / OFL / Unlicense / Public Domain** 兼容（可内嵌/再分发，需保留声明）。
+3. 新增任何内嵌二进制、模板、字体、图标前：核对许可证 → 记录版本与来源 → 更新本文件 → 保留许可全文。
+4. 发行包应在「关于 / 许可」页或 `THIRD_PARTY_LICENSES.txt` 中提供**合并许可文本**。
+5. 本文件不替代各许可证原文；发生歧义以许可证原文为准。
+
+---
+
+## D. 维护与核对流程
+
+- **依赖核对**：`flutter pub deps --style=compact` 列出全部传递依赖；对照 `pubspec.lock`，对 MIT/BSD/Apache 以外的许可立即审查。
+- **许可聚合**：构建期可用工具（如 `dart pub global run`/自定义脚本）扫描 `LICENSE` 文件生成 `THIRD_PARTY_LICENSES.txt`，随产物分发。
+- **更新触发**：任何依赖升级、模板/字体更换、Typst 版本变更，均须同步更新本文件并在 `CHANGELOG.md` 记录。
+- **核实方法**：版本/许可取自 pub.dev 包页面 License 标签与仓库 `LICENSE` 文件；内嵌资产取自其官方仓库许可证文件。
+
+---
+
+## E. 更新日志
+
+- 2026-10-06 初版：登记 pubspec 基线依赖、Typst/模板/字体运行期资产，明确禁止 GPL/AGPL 入发行包。
+- 2026-10-06 补登实际内嵌字体：`assets/fonts/DroidSansFallbackFull.ttf`（Apache-2.0，含许可全文 `LICENSE-Apache-2.0.txt`）。
