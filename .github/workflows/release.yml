@@ -62,7 +62,9 @@ jobs:
           path: lifeline-linux-x64.tar.gz
 
   windows:
-    runs-on: windows-latest
+    # 固定 windows-2022：windows-latest 的 VS18 移除了 <experimental/coroutine>，
+    # 会导致 permission_handler_windows 插件编译失败（C2338/STL1011）。
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
