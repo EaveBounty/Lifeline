@@ -12,8 +12,17 @@ import 'package:archive/archive.dart';
 import '../../core/result.dart';
 import '../../data/models/resume_doc.dart';
 import 'renderer.dart';
+import 'templates.dart';
 
 class DocxRenderer extends ResumeRenderer {
+  DocxRenderer({this.templateId});
+
+  /// 默认模板 id；可被 `options['templateId']` 覆盖。
+  final String? templateId;
+
+  String _accentHex = '2E5C8A';
+  bool _modernStyle = false;
+
   @override
   String get format => 'docx';
 
@@ -26,13 +35,18 @@ class DocxRenderer extends ResumeRenderer {
     Map<String, dynamic> options = const {},
   }) async {
     try {
+      final template = ResumeTemplates.byId(
+        (options['templateId'] as String?) ?? templateId,
+      );
       final archive = Archive()
         ..add(ArchiveFile.string('[Content_Types].xml', _contentTypes))
         ..add(ArchiveFile.string('_rels/.rels', _rootRels))
         ..add(ArchiveFile.string(
             'word/_rels/document.xml.rels', _documentRels))
         ..add(ArchiveFile.string('word/styles.xml', _styles))
-        ..add(ArchiveFile.string('word/document.xml', _document(doc)));
+        ..add(ArchiveFile.string(
+            'word/document.xml',
+            _document(doc, _hex(template.accentArgb), _modern(template))));
       final bytes = ZipEncoder().encode(archive);
       return Ok(bytes);
     } catch (e) {
@@ -40,7 +54,16 @@ class DocxRenderer extends ResumeRenderer {
     }
   }
 
-  String _document(ResumeDocument doc) {
+  /// 是否采用「modern」标题样式（仍单列，仅配色/下边框，兼容 ATS）。
+  bool _modern(ResumeTemplate t) =>
+      t.id != ResumeTemplates.defaultId && t.layout != 'elegant';
+
+  String _hex(int argb) =>
+      (argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0');
+
+  String _document(ResumeDocument doc, String accent, bool modern) {
+    _accentHex = accent;
+    _modernStyle = modern;
     final b = StringBuffer();
     b.writeln('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
     b.writeln('<w:document '
@@ -50,7 +73,7 @@ class DocxRenderer extends ResumeRenderer {
 
     final h = doc.header;
     b.writeln(_para(
-      [ _Run(h.name.isEmpty ? 'Resume' : h.name, bold: true, size: 40) ],
+      [ _Run(h.name.isEmpty ? 'Resume' : h.name, bold: true, size: 40, color: _accentHex) ],
       style: 'Title',
     ));
     if ((h.englishName ?? '').trim().isNotEmpty) {
@@ -123,10 +146,16 @@ class DocxRenderer extends ResumeRenderer {
     return b.toString();
   }
 
-  String _heading(String text) => _para(
-        [_Run(text, bold: true, size: 28)],
-        style: 'Heading1',
-      );
+  String _heading(String text) {
+    final run = [_Run(text, bold: true, size: 28, color: _modernStyle ? _accentHex : null)];
+    if (!_modernStyle) return _para(run, style: 'Heading1');
+    // modern：彩色标题 + 底部强调色边框，仍为单列、ATS 友好。
+    return _para(
+      run,
+      style: 'Heading1',
+      borderBottomColor: _accentHex,
+    );
+  }
 
   String _bullet(String text) => _para(
         [_Run('•  $text')],
@@ -137,16 +166,22 @@ class DocxRenderer extends ResumeRenderer {
     List<_Run> runs, {
     String? style,
     bool center = false,
+    String? borderBottomColor,
   }) {
     final b = StringBuffer('<w:p>');
     final props = StringBuffer();
     if (style != null) props.write('<w:pStyle w:val="${_esc(style)}"/>');
     if (center) props.write('<w:jc w:val="center"/>');
+    if (borderBottomColor != null) {
+      props.write('<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="2" '
+          'w:color="$borderBottomColor"/></w:pBdr>');
+    }
     if (props.isNotEmpty) b.write('<w:pPr>$props</w:pPr>');
     for (final run in runs) {
       b.write('<w:r><w:rPr>');
       if (run.bold) b.write('<w:b/>');
       if (run.italic) b.write('<w:i/>');
+      if (run.color != null) b.write('<w:color w:val="${run.color}"/>');
       if (run.size != null) {
         b.write('<w:sz w:val="${run.size}"/><w:szCs w:val="${run.size}"/>');
       }
@@ -218,9 +253,10 @@ class DocxRenderer extends ResumeRenderer {
 }
 
 class _Run {
-  const _Run(this.text, {this.bold = false, this.italic = false, this.size});
+  const _Run(this.text, {this.bold = false, this.italic = false, this.size, this.color});
   final String text;
   final bool bold;
   final bool italic;
   final int? size;
+  final String? color;
 }

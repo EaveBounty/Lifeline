@@ -1,6 +1,6 @@
 # Lifeline · 履痕
 
-> 跨平台（Android / Windows / Linux）个人资料管理软件：把散落的个人经历沉淀为**可挂载、可 diff、可被任意工具同步的纯文本文件夹**，聚合成一份**不断自动编译的完整简历**，并支持 AI 自动录入与按岗位定向导出（Typst→PDF / DOCX / Markdown）。
+> 跨平台（Android / Windows / Linux / Web）个人资料管理软件：把散落的个人经历沉淀为**可挂载、可 diff、可被任意工具同步的纯文本文件夹**，聚合成一份**不断自动编译的完整简历**，并支持 AI 自动录入、按岗位定向导出（多模板 Typst→PDF / DOCX / Markdown）与简历评估。
 
 仓库：`EaveBounty/Lifeline` ｜ 许可：**PolyForm Noncommercial License 1.0.0**
 版权：**长沙市果垂素宇工程设计有限公司**
@@ -59,8 +59,9 @@
 | 多格式导出 | Typst→PDF（桌面精美）、纯 Dart PDF 兜底（全平台）、DOCX（ATS）、Markdown |
 | AI 自动录入 | 文本 / 图片（vision）→ 严格 JSON → 人工确认落库 |
 | 自动编译 | 文件监听 + 轮询兜底 + debounce，变更即重编译 |
-| 按岗位定向导出 | 岗位调研 → 裁剪策略 → 生成 `spec.json` → 渲染 → 归档简历管理 |
-| 简历多角度评估 | 八维度打分（启发式离线 / AI）+ 缺漏项 + 按边际效益排序的改进建议；结果写回 `meta.json` |
+| 按岗位定向导出 | 岗位调研 → 裁剪策略 → 生成 `spec.json` → 多模板渲染 → 归档简历管理 |
+| 导出模板 | 10 套风格（ATS 单列 / 现代双栏 / 学术 CV / 应届生 / 教师 / 创意 / 商务 / 技术紧凑 / 优雅衬线 / 极简），按目标岗位智能推荐；桌面 Typst 精品、全平台 DartPdf 兜底、DOCX/Markdown |
+| 简历评估（一体两面） | ① **岗位适配诊断**：对照岗位能力画像与硬性要求找缺漏（教师缺教资、算法缺竞赛…），给出**按边际效益排序**的提升行动与资源；② **客观质量评分**：多维打分（启发式离线 / AI）。结果写回 `meta.json` |
 | 密钥安全 | `flutter_secure_storage`，Linux 缺失 keyring 时降级为受权限文件并显式提示 |
 | 离线优先 | 无网络可用；云端能力（LLM/联网调研）均为可选增强 |
 
@@ -79,6 +80,7 @@
 | AI 自动录入 | ![智能录入](docs/assets/screenshot-capture.png) |
 | 定向导出问卷 | ![定向导出](docs/assets/screenshot-export.png) |
 | 简历管理 | ![简历管理](docs/assets/screenshot-resumes.png) |
+| 简历评估（岗位适配 + 客观质量） | ![简历评估](docs/assets/screenshot-eval.png) |
 
 ### 运行浏览器端到端测试
 
@@ -256,6 +258,28 @@ bash tool/fetch_typst.sh     # 拉取对应平台 Typst 0.15.1 二进制到 asse
 CJK 字体 `assets/fonts/DroidSansFallbackFull.ttf`（Apache-2.0，见 `NOTICE` §B.3）随包内嵌，
 由 `FontResolver` 经 `rootBundle.load` 读取；`pubspec.yaml` 已声明 `assets/fonts/`，中文 PDF 不再缺字。
 
+### 8.6 简历模板与版式
+
+导出问卷新增「模板风格」选择：`ResumeTemplates`（`lib/services/render/templates.dart`）内置 **10 套**模板，
+按岗位推荐并全链路透传到各渲染器。`DartPdfRenderer` 真正实现 5 种版式（single / two-column /
+academic / creative / compact），`TypstRenderer` 提供 single / two-column / academic / creative 四套模板串；
+DOCX / Markdown 接受模板参数（DOCX 保持单列 ATS，可选「modern」彩色标题）。
+
+| 模板 id | 风格 | 版式 | 适配 |
+|---|---|---|---|
+| `ats-classic` | ATS 经典单列 | single | 通用/大厂/外企 |
+| `modern-two-col` | 现代双栏 | two-column | 互联网/技术/产品 |
+| `academic-cv` | 学术 CV | academic | 科研/读研/教职 |
+| `fresh-graduate` | 应届生一页 | compact | 校招/实习 |
+| `teacher` | 教师版 | compact | 教育/教研 |
+| `creative` | 创意设计 | creative | 设计/视觉/UI |
+| `business` | 商务简约 | elegant | 金融/咨询/法务 |
+| `tech-compact` | 技术紧凑 | compact | 算法/后端/数据 |
+| `elegant-serif` | 优雅衬线 | elegant | 管理/市场 |
+| `minimal-mono` | 极简单色 | mono | 通用/国企 |
+
+> 模板仅影响渲染层，不改变 `ResumeDocument` IR；未知/空 id 回退 `ats-classic`。
+
 ---
 
 ## 9. 首次启动
@@ -339,4 +363,6 @@ CJK 字体 `assets/fonts/DroidSansFallbackFull.ttf`（Apache-2.0，见 `NOTICE` 
 - 2026-10-06 修复对齐：内嵌 CJK 字体 `assets/fonts/DroidSansFallbackFull.ttf`（Apache-2.0）、启动根校验、附件索引重建、AI 录入回写附件、路径遍历防护、导出默认项/语言接线、watcher autoDispose、`extra_headers` 脱敏、导入 id 校验、CI 最小权限；同步根结构移除 `secrets.local.yaml`（降级文件改 App 支持目录 `secrets.local.json`）。
 - 2026-10-06 新增 Web 平台：`lib/core/platform/`（dart:io 内存兼容层）、`RecordIndex` 抽象（drift↔内存）、`ChangeWatcher` 条件实现、web 首启内存演示入口；`flutter build web --release --no-web-resources-cdn` 可运行，桌面/移动端行为不变。构建产物本地预览：`tool/serve_web.sh`。
 - 2026-10-06 新增简历多角度评估：`resume_eval.dart`（`ResumeEvaluation` 八维度 + 加权总分 + 缺漏 + 边际效益建议）、`resume_eval_service.dart`（启发式离线 + AI 双通道，模型输出按不可信数据解析）、`resume_eval_page.dart`（路由 `/resumes/eval`）与简历库总分徽章；`ResumeMeta` 持久化 `request`/`evaluation`（旧数据兼容）；`ExportService` 生成时预填启发式评估。
-- 2026-10-06 增补 web 版六张截图与浏览器端到端测试：`tool/web_test/`（Playwright 无头 Chromium 跑通 6 路由 + 1 交互，0 console/pageerror，ImageMagick 校验截图非空白）；`lib/dev/demo_seed.dart`（`?demo=1` 注入示例数据）；`main.dart` Web 端启用语义树（`flt-semantics`）供测试定位；`docs/assets/screenshot-*.png` 更新为真实运行截图。
+- 2026-10-06 增补 web 版截图（7 张）与浏览器端到端测试：`tool/web_test/`（Playwright 无头 Chromium 跑通 6 路由 + 1 交互，0 console/pageerror，ImageMagick 校验截图非空白）；`lib/dev/demo_seed.dart`（`?demo=1` 注入示例数据）；`main.dart` Web 端启用语义树（`flt-semantics`）供测试定位；`docs/assets/screenshot-*.png` 更新为真实运行截图。
+- 2026-10-06 简历导出多模板：新增 `services/render/templates.dart`（10 套模板 + 岗位推荐 + 章节排序）；`DartPdfRenderer` 实现 5 种版式；`TypstRenderer` 四套模板串；DOCX/Markdown 接受模板参数；`renderersFor` 按模板出候选；`ExportRequest`/`ResumeMeta` 增 `templateId`；导出页模板选择卡片 + 简历库显示模板名；新增 `test/templates_test.dart`。
+- 2026-10-06 评估重构为一体两面（v0.2.0）：`ResumeEvaluation` 拆为 `FitAnalysis`（岗位适配诊断）+ `ObjectiveScore`（客观质量评分），schema v2 兼容 v1；新增岗位画像库 `lib/data/role_profiles.dart`（16 类岗位的硬性证书/技能/典型经历/加分项/行动+资源，如教师教资 NTCE、算法 Kaggle/天池/LeetCode）；启发式按 **边际效益**（gain×effort 权重）排序生成提升行动；评估页分段展示并支持可寻址路由 `/resumes/eval/:id`；`resume_manager_page` 徽章显示 `适配/客观` 双分；`test/resume_eval_test.dart` 扩到 13 例；新增评估截图。

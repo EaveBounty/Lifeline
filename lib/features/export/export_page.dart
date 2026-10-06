@@ -12,6 +12,7 @@ import '../../data/providers.dart';
 import '../../data/repositories/resume_repository.dart';
 import '../../services/ai/llm_client.dart';
 import '../../services/export/export_service.dart';
+import '../../services/render/templates.dart';
 
 class ExportPage extends ConsumerStatefulWidget {
   const ExportPage({super.key});
@@ -35,6 +36,10 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   String _style = 'concise';
   String _tone = 'professional';
   bool _research = true;
+
+  /// 当前模板；用户手动选择后不再被岗位推荐覆盖。
+  String _templateId = ResumeTemplates.defaultId;
+  bool _templateTouched = false;
 
   bool _busy = false;
   String? _stage;
@@ -103,6 +108,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       exclude: _list(_exclude.text),
       researchEnabled: _research,
       extraNotes: _notes.text.trim(),
+      templateId: _templateId,
     );
 
     setState(() {
@@ -225,6 +231,11 @@ class _ExportPageState extends ConsumerState<ExportPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _role,
+                      onChanged: (v) {
+                        if (_templateTouched) return;
+                        final top = ResumeTemplates.recommendFor([v]).first.id;
+                        setState(() => _templateId = top);
+                      },
                       decoration: const InputDecoration(
                         labelText: '目标岗位',
                         border: OutlineInputBorder(),
@@ -287,6 +298,8 @@ class _ExportPageState extends ConsumerState<ExportPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              _templateCard(),
               const SizedBox(height: 12),
               SectionCard(
                 title: '取舍与强调',
@@ -357,6 +370,73 @@ class _ExportPageState extends ConsumerState<ExportPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 模板选择卡片：下拉 + 说明 + 章节顺序预览。
+  Widget _templateCard() {
+    final selected = ResumeTemplates.byId(_templateId);
+    final full = ref.watch(fullResumeProvider);
+    final order = full == null
+        ? const <String>[]
+        : ResumeTemplates.orderSections(full.sections, selected.id)
+            .where((s) => s.items.isNotEmpty)
+            .map((s) => s.title)
+            .toList();
+    final body = Theme.of(context).textTheme.bodySmall;
+    return SectionCard(
+      title: '模板风格',
+      icon: Icons.style_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: selected.id,
+            decoration: const InputDecoration(
+              labelText: '选择模板',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              for (final t in ResumeTemplates.all)
+                DropdownMenuItem(
+                  value: t.id,
+                  child: Text('${t.name}  ·  ${t.layout}'),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) {
+                setState(() {
+                  _templateId = v;
+                  _templateTouched = true;
+                });
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          Text(selected.description, style: body),
+          const SizedBox(height: 6),
+          Text('适配：${selected.bestFor.join(' / ')}', style: body),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final tag in selected.tags)
+                Chip(
+                  label: Text(tag),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+            ],
+          ),
+          if (order.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('章节顺序预览：', style: Theme.of(context).textTheme.labelMedium),
+            const SizedBox(height: 2),
+            Text(order.join('  →  '), style: body),
+          ],
+        ],
       ),
     );
   }

@@ -87,7 +87,11 @@ class ExportService {
     final preferTypst = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
     final files = <String, String>{};
     for (final format in formats) {
-      final renderers = renderersFor(format, preferTypstPdf: preferTypst);
+      final renderers = renderersFor(
+        format,
+        templateId: request.templateId,
+        preferTypstPdf: preferTypst,
+      );
       for (final renderer in renderers) {
         onStage?.call('渲染 ${format.toUpperCase()}');
         final res = await renderer.render(
@@ -95,6 +99,7 @@ class ExportService {
           options: {
             'language': request.language,
             'pageLimit': request.pageLimit,
+            'templateId': request.templateId,
           },
         );
         if (res.isErr) continue;
@@ -132,6 +137,7 @@ class ExportService {
         providerModel: '$providerId/$model',
         researchDigest: digest,
         request: request,
+        templateId: request.templateId,
         evaluation: evaluation,
         createdAt: now,
         updatedAt: DateTime.now(),

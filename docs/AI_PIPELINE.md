@@ -206,28 +206,48 @@
 5. **双版本输出** → ① 给人看的 Typst 精美 PDF；② 给 ATS 看的朴素单列 DOCX；共享同一 JSON 源、不同模板。
 6. **可追溯** → AI 只做选取/改写/排序，所有生成内容可回指源 JSON 字段，便于审校与撤回。
 
-### 3.6 简历多角度评估（Evaluation）
+### 3.6 简历多角度评估（Evaluation）：一体两面
 
-生成定向简历后，可对 `spec.json` 做**多角度评估**：打分 + 缺漏项 + 「后续补什么边际效益最大」的改进建议。
+生成定向简历后，可对 `spec.json` 做**一体两面**评估——**分类一·岗位适配诊断（针对性）**与**分类二·客观质量评分（通用）**。
 
+- **分类一 · 岗位适配诊断 `fit`（针对性）**：对照**目标岗位/企业**的硬性要求与能力画像，找出缺什么，并给出**按边际效益排序**的「提升录取概率」行动清单。
+  - 岗位画像库 `lib/data/role_profiles.dart`：覆盖 **16 类**方向（教师、算法/机器学习、软件开发、数据分析、产品经理、金融/会计、公务员/事业编、医生/护理、律师/法务、设计/UI、销售、市场、运营、人力 HR、行政、科研/读研申请），含必备/加分证书、核心技能、典型经历、加分项、行动与真实资源链接。
+  - 硬性证书逐条对照 → `HardRequirement{status: have|partial|missing|unclear, importance: required|preferred}`；核心技能/典型经历缺失 → `FitMissingItem`；`recommendations` 为尚未满足的行动，按 `expectedGain × effortFactor` 降序赋 `priority`（=1 边际效益最高）。
+  - `fit_score` = 证书命中率 × .40 + 核心技能覆盖 × .35 + 典型经历覆盖 × .25（无证书要求则技能 .6 / 经历 .4）；有硬性证书缺失时封顶 60。无匹配画像时按 `target_role` 关键词覆盖率估算并给通用建议。
+- **分类二 · 客观质量评分 `objective`（通用、不依赖岗位）**：七个维度（去掉旧 `match`）——`completeness` 内容完整度、`impact` 量化成果、`structure` 结构可读性、`language` 语言专业度、`ats` ATS 友好度、`differentiation` 差异化亮点、`density` 篇幅信息密度。
+  - 加权总分权重（和=1）：`completeness .20 / impact .20 / structure .15 / language .12 / ats .15 / differentiation .12 / density .06`（见 `kDimensionWeights`）。
 - **双通道**：
-  1. **启发式（默认、离线、确定性）**：`ResumeEvalService.evaluateHeuristic` 为纯函数，不联网不读写文件。`ExportService` 生成简历时会顺带预填一份启发式评估写入 `meta.json`。
-  2. **AI 评估（可选）**：`ResumeEvalService.evaluateWithAi` 调用 `chatCompletion(jsonMode:true)` + `evalSystemPrompt`；模型输出按**不可信数据**解析，解析失败返回 `Err`，UI 回退启发式。
-- **八个维度**（key / 中文）：`match` 岗位匹配度、`completeness` 内容完整度、`impact` 量化成果、`structure` 结构可读性、`language` 语言专业度、`ats` ATS 友好度、`differentiation` 差异化亮点、`density` 篇幅信息密度。
-- **加权总分**：默认权重 `match .20 / impact .15 / completeness .15 / structure .12 / language .10 / ats .13 / differentiation .10 / density .05`（见 `kDimensionWeights`，可调）。
-- **改进建议排序**：`priority` 由 `expectedGain × effortFactor` 降序决定（`effort` 权重 low=1.0 / medium=0.6 / high=0.35），`priority=1` 即**边际效益最高**。
-- **数据落盘**：`ResumeMeta.request`（问卷）与 `ResumeMeta.evaluation`（评估）随 `meta.json` 持久化；旧数据缺字段时解析为 `null`（向后兼容）。
-- **UI**：`lib/features/export/resume_eval_page.dart`（路由 `/resumes/eval`，`extra: ResumeMeta`），简历库列表显示总分徽章。
+  1. **启发式（默认、离线、确定性）**：`ResumeEvalService.evaluateHeuristic` 为纯函数，不联网不读写文件，同时产出 `fit` 与 `objective`。`ExportService` 生成简历时顺带预填写入 `meta.json`。
+  2. **AI 评估（可选）**：`ResumeEvalService.evaluateWithAi` 调用 `chatCompletion(jsonMode:true)` + `evalSystemPrompt`（严格 JSON，同时输出 `fit`/`objective`）；模型输出按**不可信数据**解析，解析失败返回 `Err`，UI 回退启发式。
+- **数据落盘**：`ResumeMeta.request`（问卷）与 `ResumeMeta.evaluation`（评估）随 `meta.json` 持久化；`ResumeEvaluation.fromJson` 兼容旧版（schema v1 顶层 `overall/dimensions/missing/recommendations`）映射为 `objective`/`fit`，旧数据缺字段时解析为 `null`。
+- **UI**：`lib/features/export/resume_eval_page.dart`（路由 `/resumes/eval`，`extra: ResumeMeta`）以分段切换「岗位适配诊断 / 客观质量评分」；顶部「AI 精评」按钮在无 Provider/Key 时禁用并引导 `/settings/ai`。简历库徽章显示 `fit/obj` 两分。资源链接经 `url_launcher` 打开（web 可用）。
 
-AI 评估输出 schema（`evalSystemPrompt`）：
+AI 评估输出 schema（`evalSystemPrompt`，schema v2）：
 
 ```jsonc
 {
-  "overall": 0,
-  "summary": "string",
-  "dimensions": [{ "key": "match", "label": "岗位匹配度", "score": 0, "comment": "string", "evidence": ["依据"] }],
-  "missing": [{ "item": "string", "why": "string", "suggestion": "string", "severity": "high|medium|low" }],
-  "recommendations": [{ "item": "string", "expected_gain": 0, "effort": "low|medium|high", "priority": 1, "rationale": "string" }]
+  "fit": {
+    "fit_score": 0,
+    "role_profile_id": "teacher|algorithm|software|null",
+    "role_name": "string|null",
+    "summary": "string",
+    "hard_requirements": [
+      { "name": "教师资格证", "status": "have|partial|missing|unclear", "importance": "required|preferred", "evidence": "原文依据", "note": "string" }
+    ],
+    "missing": [
+      { "item": "string", "category": "cert|experience|skill|education|portfolio|other", "importance": "required|preferred", "why": "string", "suggestion": "string" }
+    ],
+    "recommendations": [
+      { "action": "报名中小学教师资格考试（NTCE）", "category": "cert", "expected_gain": 40, "effort": "low|medium|high", "time_estimate": "3-6 个月", "rationale": "string", "resources": ["https://ntce.neea.edu.cn"] }
+    ]
+  },
+  "objective": {
+    "overall": 0,
+    "summary": "string",
+    "strengths": ["string"],
+    "weaknesses": ["string"],
+    "dimensions": [{ "key": "impact", "label": "量化成果", "score": 0, "comment": "string", "evidence": ["依据"] }]
+  }
 }
 ```
 
@@ -275,3 +295,4 @@ AI 评估输出 schema（`evalSystemPrompt`）：
 - 2026-10-06 初版：自动录入 / 自动编译 / 智能导出三链路、schema、提示词原则（严格 JSON、防注入、置信度与人工确认）、定向简历方法论（ATS/页数/STAR）。
 - 2026-10-06 对齐实现（B5/B7）：`ExportRequest` 改为扁平 schema（`target_role`/`target_company`/`page_limit`/`must_include`/`exclude` 等）；密钥降级文件更正为 `secrets.local.json`（App 支持目录）；补充 Provider `extra_headers` 脱敏说明。
 - 2026-10-06 新增 §3.6 简历多角度评估：启发式（离线确定性）+ AI 双通道、八维度加权总分、按边际效益排序的改进建议、`meta.json` 持久化 `request`/`evaluation` 与向后兼容。
+- 2026-10-06 §3.6 重构为「一体两面」schema v2：分类一 `fit` 岗位适配诊断（16 类岗位画像库 `role_profiles.dart`、硬性证书对照、按录取概率边际效益排序的行动 + 真实资源）、分类二 `objective` 客观质量七维度（去掉 `match`）；`ResumeEvaluation.fromJson` 兼容 v1 旧结构；UI 分段展示 + `fit/obj` 徽章。

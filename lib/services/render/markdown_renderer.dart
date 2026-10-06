@@ -6,8 +6,14 @@ import 'dart:convert';
 import '../../core/result.dart';
 import '../../data/models/resume_doc.dart';
 import 'renderer.dart';
+import 'templates.dart';
 
 class MarkdownRenderer extends ResumeRenderer {
+  MarkdownRenderer({this.templateId});
+
+  /// 默认模板 id；可被 `options['templateId']` 覆盖。
+  final String? templateId;
+
   @override
   String get format => 'md';
 
@@ -19,12 +25,16 @@ class MarkdownRenderer extends ResumeRenderer {
     ResumeDocument doc, {
     Map<String, dynamic> options = const {},
   }) async {
-    final md = renderString(doc);
+    final tid = (options['templateId'] as String?) ?? templateId;
+    final md = renderString(doc, templateId: tid);
     return Ok(utf8.encode(md));
   }
 
-  /// 纯函数：IR -> Markdown 字符串。
-  String renderString(ResumeDocument doc) {
+  /// 纯函数：IR -> Markdown 字符串；template 影响章节顺序与标题层级。
+  String renderString(ResumeDocument doc, {String? templateId}) {
+    final template = ResumeTemplates.byId(templateId);
+    final sections = ResumeTemplates.orderSections(doc.sections, template.id);
+    // academic/creative 用 H2 作主标题，其余用 H2 亦保持兼容；仅章节顺序随模板变化。
     final b = StringBuffer();
     final h = doc.header;
 
@@ -62,7 +72,7 @@ class MarkdownRenderer extends ResumeRenderer {
       }
     }
 
-    for (final section in doc.sections) {
+    for (final section in sections) {
       if (section.items.isEmpty) continue;
       b.writeln();
       b.writeln('## ${section.title}');

@@ -8,6 +8,7 @@ import '../features/ai/capture_page.dart';
 import '../features/attachments/attachments_page.dart';
 import '../features/export/export_page.dart';
 import '../features/export/resume_eval_page.dart';
+import '../features/export/resume_eval_route.dart';
 import '../features/export/resume_manager_page.dart';
 import '../features/home/full_resume_page.dart';
 import '../features/onboarding/sync_guide_page.dart';
@@ -47,6 +48,10 @@ final GoRouter appRouter = GoRouter(
         if (meta is! ResumeMeta) return const ResumeManagerPage();
         return ResumeEvalPage(meta: meta);
       },
+    ),
+    GoRoute(
+      path: '/resumes/eval/:id',
+      builder: (_, s) => ResumeEvalByIdPage(id: s.pathParameters['id']!),
     ),
   ],
 );

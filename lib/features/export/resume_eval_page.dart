@@ -1,9 +1,12 @@
-/// 简历多角度评估页：总分 / 维度 / 缺漏 / 按边际效益排序的改进建议。
+/// 简历「一体两面」评估页：
+/// - 岗位适配诊断（针对性）：硬性要求对照 / 缺漏 / 按边际效益排序的提升行动。
+/// - 客观质量评分（通用）：总分 / 维度 / 优点不足。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/models/ai_provider.dart';
 import '../../data/models/export_request.dart';
@@ -30,7 +33,9 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
   bool _loading = true;
   bool _aiRunning = false;
   String? _error;
+  int _tab = 0;
   final Set<String> _expanded = {};
+  final Set<String> _doneActions = {};
 
   @override
   void initState() {
@@ -155,6 +160,20 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
     if (go == true && mounted) context.push('/settings/ai');
   }
 
+  Future<void> _open(String url) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      if (!ok) {
+        messenger.showSnackBar(SnackBar(content: Text('无法打开链接：$url')));
+      }
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(content: Text('无法打开链接：$url')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final providers = ref
@@ -199,38 +218,18 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 820),
+        constraints: const BoxConstraints(maxWidth: 860),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             _aiButton(context, providers),
             const SizedBox(height: 12),
-            _scoreHeader(context, eval),
+            _segmented(context, eval),
             const SizedBox(height: 12),
-            _section(
-              context,
-              title: '维度评分',
-              icon: Icons.radar,
-              children: [for (final d in eval.dimensions) _dimensionTile(context, d)],
-            ),
-            const SizedBox(height: 12),
-            _section(
-              context,
-              title: '缺漏项（${eval.missing.length}）',
-              icon: Icons.report_problem_outlined,
-              children: eval.missing.isEmpty
-                  ? [const ListTile(dense: true, title: Text('未发现明显缺漏。'))]
-                  : [for (final m in eval.missing) _missingTile(context, m)],
-            ),
-            const SizedBox(height: 12),
-            _section(
-              context,
-              title: '改进建议（按边际效益排序）',
-              icon: Icons.trending_up,
-              children: [
-                for (final r in eval.recommendations) _recTile(context, r),
-              ],
-            ),
+            if (_tab == 0)
+              ..._fitSections(context, eval.fit)
+            else
+              ..._objectiveSections(context, eval.objective),
           ],
         ),
       ),
@@ -248,22 +247,76 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.auto_awesome),
-      label: Text(_aiRunning ? 'AI 评估中…' : 'AI 评估'),
+      label: Text(_aiRunning ? 'AI 评估中…' : 'AI 精评'),
     );
+    final row = Align(alignment: Alignment.centerRight, child: button);
     if (providers.isEmpty) {
       return Tooltip(
         message: '未配置 AI Provider，请前往「设置 → AI」',
-        child: button,
+        child: row,
       );
     }
-    return Align(alignment: Alignment.centerRight, child: button);
+    return row;
   }
 
-  Widget _scoreHeader(BuildContext context, ResumeEvaluation eval) {
+  Widget _segmented(BuildContext context, ResumeEvaluation eval) {
+    return SegmentedButton<int>(
+      segments: [
+        ButtonSegment(
+          value: 0,
+          icon: const Icon(Icons.work_outline),
+          label: Text('岗位适配诊断 · ${eval.fit.fitScore}'),
+        ),
+        ButtonSegment(
+          value: 1,
+          icon: const Icon(Icons.assessment_outlined),
+          label: Text('客观质量评分 · ${eval.objective.overall}'),
+        ),
+      ],
+      selected: {_tab},
+      onSelectionChanged: (s) => setState(() => _tab = s.first),
+    );
+  }
+
+  // --- 岗位适配诊断 ---
+
+  List<Widget> _fitSections(BuildContext context, FitAnalysis fit) {
+    return [
+      _fitHeader(context, fit),
+      const SizedBox(height: 12),
+      _section(
+        context,
+        title: '硬性要求对照（${fit.hardRequirements.length}）',
+        icon: Icons.fact_check_outlined,
+        children: fit.hardRequirements.isEmpty
+            ? [const ListTile(dense: true, title: Text('该岗位画像无明确硬性证书要求。'))]
+            : [for (final r in fit.hardRequirements) _hardReqTile(context, r)],
+      ),
+      const SizedBox(height: 12),
+      _section(
+        context,
+        title: '缺漏项（${fit.missing.length}）',
+        icon: Icons.report_problem_outlined,
+        children: fit.missing.isEmpty
+            ? [const ListTile(dense: true, title: Text('未发现明显缺漏。'))]
+            : [for (final m in fit.missing) _missingTile(context, m)],
+      ),
+      const SizedBox(height: 12),
+      _section(
+        context,
+        title: '提升行动清单（按边际效益排序）',
+        icon: Icons.trending_up,
+        children: [
+          for (final a in fit.recommendations) _actionTile(context, a),
+        ],
+      ),
+    ];
+  }
+
+  Widget _fitHeader(BuildContext context, FitAnalysis fit) {
     final theme = Theme.of(context);
-    final color = _scoreColor(eval.overall, theme.colorScheme);
-    final subtitle = [eval.targetRole, eval.targetCompany]
-        .where((e) => e != null && e.trim().isNotEmpty)
+    final subtitle = [_request.targetRole, _request.targetCompany]
+        .where((e) => e.trim().isNotEmpty)
         .join(' · ');
     return Card(
       child: Padding(
@@ -271,30 +324,7 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(
-              width: 104,
-              height: 104,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 104,
-                    height: 104,
-                    child: CircularProgressIndicator(
-                      value: eval.overall / 100,
-                      strokeWidth: 9,
-                      backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                      valueColor: AlwaysStoppedAnimation(color),
-                    ),
-                  ),
-                  Text(
-                    '${eval.overall}',
-                    style: theme.textTheme.headlineMedium
-                        ?.copyWith(color: color, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
+            _ring(theme, fit.fitScore, label: '适配度'),
             const SizedBox(width: 20),
             Expanded(
               child: Column(
@@ -312,7 +342,16 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
                       const SizedBox(width: 8),
                       Chip(
                         label: Text(
-                          eval.aiAssisted ? 'AI 评估' : '启发式',
+                          fit.roleName ?? '未识别画像',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      const SizedBox(width: 6),
+                      Chip(
+                        label: Text(
+                          _eval?.aiAssisted == true ? 'AI' : '启发式',
                           style: const TextStyle(fontSize: 11),
                         ),
                         visualDensity: VisualDensity.compact,
@@ -321,15 +360,10 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
                     ],
                   ),
                   if (subtitle.isNotEmpty)
-                    Text(subtitle, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                    Text(subtitle,
+                        style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
-                  Text(eval.summary),
-                  const SizedBox(height: 4),
-                  Text(
-                    '生成于 ${_fmt(eval.generatedAt)}'
-                    '${eval.model == null ? '' : ' · ${eval.model}'}',
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
-                  ),
+                  Text(fit.summary),
                 ],
               ),
             ),
@@ -339,29 +373,237 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
     );
   }
 
-  Widget _section(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
-    return Card(
-      child: Column(
+  Widget _hardReqTile(BuildContext context, HardRequirement r) {
+    final theme = Theme.of(context);
+    final color = _statusColor(r.status, theme.colorScheme);
+    final icon = switch (r.status) {
+      'have' => Icons.check_circle,
+      'partial' => Icons.remove_circle,
+      'missing' => Icons.cancel,
+      _ => Icons.help_outline,
+    };
+    return ListTile(
+      dense: true,
+      leading: Icon(icon, color: color, size: 20),
+      title: Row(
+        children: [
+          Expanded(child: Text(r.name)),
+          _tag(theme, _statusLabel(r.status), color),
+          const SizedBox(width: 4),
+          _tag(
+            theme,
+            r.importance == 'required' ? '硬性' : '加分',
+            r.importance == 'required' ? theme.colorScheme.primary : theme.colorScheme.outline,
+          ),
+        ],
+      ),
+      subtitle: Text(
+        [
+          if (r.evidence.isNotEmpty) '依据：${r.evidence}',
+          if (r.note.isNotEmpty) r.note,
+        ].join('\n'),
+      ),
+    );
+  }
+
+  Widget _missingTile(BuildContext context, FitMissingItem m) {
+    final theme = Theme.of(context);
+    final color = m.importance == 'required'
+        ? theme.colorScheme.error
+        : Colors.orange.shade700;
+    return ListTile(
+      dense: true,
+      leading: Icon(Icons.circle, size: 12, color: color),
+      title: Row(
+        children: [
+          Expanded(child: Text(m.item)),
+          _tag(theme, _categoryLabel(m.category), theme.colorScheme.secondary),
+          const SizedBox(width: 4),
+          _tag(
+            theme,
+            m.importance == 'required' ? '必需' : '加分',
+            color,
+          ),
+        ],
+      ),
+      subtitle: Text('${m.why}\n建议：${m.suggestion}'),
+      isThreeLine: true,
+    );
+  }
+
+  Widget _actionTile(BuildContext context, FitAction a) {
+    final theme = Theme.of(context);
+    final key = '${a.priority}|${a.action}';
+    final done = _doneActions.contains(key) || a.done;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-            child: Row(
+          Checkbox(
+            value: done,
+            visualDensity: VisualDensity.compact,
+            onChanged: (v) => setState(() {
+              if (v == true) {
+                _doneActions.add(key);
+              } else {
+                _doneActions.remove(key);
+              }
+            }),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 12,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Text(
+                        '${a.priority}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        a.action,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          decoration: done ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '录取概率 +${a.expectedGain}%',
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _tag(theme, _categoryLabel(a.category), theme.colorScheme.secondary),
+                    _tag(theme, _effortLabel(a.effort), theme.colorScheme.outline),
+                    if (a.timeEstimate.isNotEmpty)
+                      _tag(theme, '耗时 ${a.timeEstimate}', theme.colorScheme.outline),
+                  ],
+                ),
+                if (a.rationale.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    a.rationale,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+                if (a.resources.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final url in a.resources)
+                        ActionChip(
+                          avatar: const Icon(Icons.open_in_new, size: 14),
+                          label: Text(
+                            _shortUrl(url),
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          onPressed: () => _open(url),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
-          const Divider(height: 1),
-          ...children,
         ],
+      ),
+    );
+  }
+
+  // --- 客观质量评分 ---
+
+  List<Widget> _objectiveSections(BuildContext context, ObjectiveScore objective) {
+    return [
+      _objectiveHeader(context, objective),
+      const SizedBox(height: 12),
+      _section(
+        context,
+        title: '维度评分',
+        icon: Icons.radar,
+        children: [for (final d in objective.dimensions) _dimensionTile(context, d)],
+      ),
+      const SizedBox(height: 12),
+      _section(
+        context,
+        title: '优点与不足',
+        icon: Icons.thumb_up_alt_outlined,
+        children: [
+          _chipRow(
+            context,
+            '优点',
+            objective.strengths,
+            Colors.green.shade600,
+          ),
+          _chipRow(
+            context,
+            '不足',
+            objective.weaknesses,
+            Theme.of(context).colorScheme.error,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Widget _objectiveHeader(BuildContext context, ObjectiveScore objective) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            _ring(theme, objective.overall, label: '客观分'),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('客观质量评分', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 6),
+                  Text(objective.summary),
+                  const SizedBox(height: 6),
+                  if (_eval != null)
+                    Text(
+                      '生成于 ${_fmt(_eval!.generatedAt)}'
+                      '${_eval!.model == null ? '' : ' · ${_eval!.model}'}',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -428,59 +670,106 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
     );
   }
 
-  Widget _missingTile(BuildContext context, EvalMissingItem m) {
+  Widget _chipRow(BuildContext context, String title, List<String> items, Color color) {
     final theme = Theme.of(context);
-    final color = _severityColor(m.severity, theme.colorScheme);
-    return ListTile(
-      dense: true,
-      leading: Icon(Icons.circle, size: 12, color: color),
-      title: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(m.item)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              _severityLabel(m.severity),
-              style: TextStyle(fontSize: 11, color: color),
-            ),
+          SizedBox(
+            width: 40,
+            child: Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+          ),
+          Expanded(
+            child: items.isEmpty
+                ? Text('—', style: TextStyle(color: theme.colorScheme.onSurfaceVariant))
+                : Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final e in items)
+                        Chip(
+                          label: Text(e, style: const TextStyle(fontSize: 11)),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
           ),
         ],
       ),
-      subtitle: Text('${m.why}\n建议：${m.suggestion}'),
-      isThreeLine: true,
     );
   }
 
-  Widget _recTile(BuildContext context, EvalRecommendation r) {
-    final theme = Theme.of(context);
-    return ListTile(
-      dense: true,
-      leading: CircleAvatar(
-        radius: 14,
-        backgroundColor: theme.colorScheme.primaryContainer,
-        child: Text(
-          '${r.priority}',
-          style: TextStyle(fontSize: 12, color: theme.colorScheme.onPrimaryContainer),
-        ),
-      ),
-      title: Text(r.item),
-      subtitle: Text(r.rationale),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
+  // --- 通用组件 ---
+
+  Widget _ring(ThemeData theme, int score, {required String label}) {
+    final color = _scoreColor(score, theme.colorScheme);
+    return SizedBox(
+      width: 104,
+      height: 104,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Text(
-            '+${r.expectedGain}',
-            style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+          SizedBox(
+            width: 104,
+            height: 104,
+            child: CircularProgressIndicator(
+              value: score / 100,
+              strokeWidth: 9,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
           ),
-          Text(
-            _effortLabel(r.effort),
-            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$score',
+                style: theme.textTheme.headlineMedium
+                    ?.copyWith(color: color, fontWeight: FontWeight.bold),
+              ),
+              Text(label,
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+            ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tag(ThemeData theme, String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(text, style: TextStyle(fontSize: 11, color: color)),
+      );
+
+  Widget _section(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ...children,
         ],
       ),
     );
@@ -492,16 +781,27 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
     return scheme.error;
   }
 
-  static Color _severityColor(String severity, ColorScheme scheme) => switch (severity) {
-        'high' => scheme.error,
-        'low' => scheme.outline,
-        _ => Colors.orange.shade700,
+  static Color _statusColor(String status, ColorScheme scheme) => switch (status) {
+        'have' => Colors.green.shade600,
+        'partial' => Colors.orange.shade700,
+        'missing' => scheme.error,
+        _ => scheme.outline,
       };
 
-  static String _severityLabel(String severity) => switch (severity) {
-        'high' => '高',
-        'low' => '低',
-        _ => '中',
+  static String _statusLabel(String status) => switch (status) {
+        'have' => '已具备',
+        'partial' => '部分满足',
+        'missing' => '缺失',
+        _ => '待确认',
+      };
+
+  static String _categoryLabel(String category) => switch (category) {
+        'cert' => '证书',
+        'experience' => '经历',
+        'skill' => '技能',
+        'education' => '教育',
+        'portfolio' => '作品',
+        _ => '其他',
       };
 
   static String _effortLabel(String effort) => switch (effort) {
@@ -509,6 +809,11 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
         'high' => '高投入',
         _ => '中投入',
       };
+
+  static String _shortUrl(String url) {
+    final noScheme = url.replaceFirst(RegExp(r'^https?://'), '');
+    return noScheme.length > 28 ? '${noScheme.substring(0, 27)}…' : noScheme;
+  }
 
   static String _fmt(DateTime t) =>
       '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '

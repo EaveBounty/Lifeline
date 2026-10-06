@@ -12,9 +12,16 @@ BASE_URL="http://127.0.0.1:${PORT}/"
 SCREENSHOT_DIR="${SCREENSHOT_DIR:-$ROOT/docs/assets}"
 export BASE_URL SCREENSHOT_DIR
 
-# 1) 构建产物（不存在则构建）
+# 1) 构建产物（缺失或源码更新则构建）
+NEED_BUILD=0
 if [[ ! -f "$ROOT/build/web/index.html" ]]; then
-  echo "[run.sh] 未发现 build/web，执行 flutter build web ..."
+  NEED_BUILD=1
+elif [[ -n "$(find "$ROOT/lib" "$ROOT/pubspec.yaml" -newer "$ROOT/build/web/main.dart.js" -print -quit 2>/dev/null)" ]]; then
+  NEED_BUILD=1
+fi
+[[ "${WEB_TEST_REBUILD:-0}" == "1" ]] && NEED_BUILD=1
+if [[ "$NEED_BUILD" == "1" ]]; then
+  echo "[run.sh] 构建产物缺失或源码较新，执行 flutter build web ..."
   flutter build web --release --no-web-resources-cdn
 fi
 

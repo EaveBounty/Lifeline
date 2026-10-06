@@ -1,6 +1,7 @@
-/// 定向简历多角度评估服务。
+/// 定向简历「一体两面」评估服务。
 ///
-/// - [evaluateHeuristic]：纯本地、确定性、离线可用的启发式评估。
+/// - [evaluateHeuristic]：纯本地、确定性、离线可用的启发式评估，同时产出
+///   **岗位适配诊断（fit）** 与 **客观质量评分（objective）**。
 /// - [evaluateWithAi]：调用 LLM 评估；模型输出按**不可信数据**解析，
 ///   解析失败返回 [Err]，调用方回退启发式结果。
 library;
@@ -12,6 +13,7 @@ import '../../core/result.dart';
 import '../../data/models/export_request.dart';
 import '../../data/models/resume_doc.dart';
 import '../../data/models/resume_eval.dart';
+import '../../data/role_profiles.dart';
 import '../ai/llm_client.dart';
 import '../ai/prompts.dart';
 
@@ -32,6 +34,7 @@ class ResumeEvalService {
     final itemTexts = _itemTexts(doc);
     final fullText = _docText(doc);
     final chars = _charCount(fullText);
+    final hay = fullText.toLowerCase();
 
     final hasEdu = _hasSection(doc, const ['education', '教育', '学历', '学校', 'academic']);
     final hasExp = _hasSection(doc, const ['experience', '工作', '实习', '经历', 'employment']);
@@ -39,13 +42,10 @@ class ResumeEvalService {
     final hasContact = doc.header.contacts.isNotEmpty;
     final hasSummary = (doc.summary ?? '').trim().isNotEmpty;
     final totalItems = doc.sections.fold<int>(0, (a, s) => a + s.items.length);
+    final hasLink = doc.header.contacts.any(
+      (c) => (c.url ?? '').trim().isNotEmpty || c.value.contains('http'),
+    );
 
-    final targetKeywords = _keywordsFrom([
-      request.targetRole,
-      request.targetCompany,
-      request.emphasis,
-      ...request.mustInclude,
-    ]);
     final atsKeywords = _keywordsFrom([
       request.targetRole,
       request.targetCompany,
@@ -54,10 +54,8 @@ class ResumeEvalService {
       ...request.mustInclude,
     ]);
 
-    // 1) 岗位匹配度。
-    final matchScore = _matchScore(doc, targetKeywords, itemTexts);
+    // --- 客观质量评分（objective，去掉 match） ---
 
-    // 2) 内容完整度。
     var hits = 0;
     if (hasContact) hits++;
     if (hasEdu) hits++;
@@ -67,34 +65,14 @@ class ResumeEvalService {
     if (hasSummary) completenessScore = math.min(100, completenessScore + 8);
     if (totalItems == 0) completenessScore = math.min(completenessScore, 20);
 
-    // 3) 量化成果。
     final impactScore = _impactScore(bullets, doc, itemTexts);
-
-    // 4) 结构可读性。
     final structureScore = _structureScore(doc, totalItems, hasSummary);
-
-    // 5) 语言专业度。
     final languageScore = _languageScore(bullets, itemTexts, hasSummary, doc.summary);
-
-    // 6) ATS 友好度。
     final atsScore = _atsScore(doc, atsKeywords);
-
-    // 7) 差异化亮点。
     final differentiationScore = _differentiationScore(doc);
-
-    // 8) 篇幅信息密度。
     final densityScore = _densityScore(chars, request.pageLimit);
 
     final dimensions = <EvalDimension>[
-      EvalDimension(
-        key: 'match',
-        label: kDimensionLabels['match']!,
-        score: matchScore,
-        comment: targetKeywords.isEmpty
-            ? '未提供目标岗位，无法精确衡量匹配度，给中性分。'
-            : '目标岗位关键词覆盖度约 $matchScore%。',
-        evidence: _evidenceKeywords(doc, targetKeywords, itemTexts),
-      ),
       EvalDimension(
         key: 'completeness',
         label: kDimensionLabels['completeness']!,
@@ -127,7 +105,6 @@ class ResumeEvalService {
         label: kDimensionLabels['language']!,
         score: languageScore,
         comment: '基于动词强度、弱化词与占位符的启发式判断。',
-        evidence: const [],
       ),
       EvalDimension(
         key: 'ats',
@@ -135,7 +112,7 @@ class ResumeEvalService {
         score: atsScore,
         comment: atsKeywords.isEmpty
             ? '无岗位关键词，按标准章节结构评分。'
-            : 'ATS 关键词覆盖：${_matchedRatio(atsKeywords, fullText)}%。',
+            : 'ATS 关键词覆盖：${(_matchedRatio(atsKeywords, hay) * 100).round()}%。',
         evidence: [
           if (doc.header.photoPath != null && doc.header.photoPath!.isNotEmpty)
             '含照片（部分 ATS 不友好）',
@@ -156,162 +133,293 @@ class ResumeEvalService {
         key: 'density',
         label: kDimensionLabels['density']!,
         score: densityScore,
-        comment: '约 $chars 字，目标 ${request.pageLimit > 0 ? '${request.pageLimit} 页' : '不限页数'}。',
-        evidence: const [],
+        comment:
+            '约 $chars 字，目标 ${request.pageLimit > 0 ? '${request.pageLimit} 页' : '不限页数'}。',
       ),
     ];
 
-    final overall = ResumeEvaluation.computeOverall(dimensions);
-
-    final missing = <EvalMissingItem>[];
-    final recs = <EvalRecommendation>[];
-
-    void rec(String item, int gain, String effort, String rationale) => recs.add(
-          EvalRecommendation(item: item, expectedGain: gain, effort: effort, rationale: rationale),
-        );
-
-    if (!hasContact) {
-      missing.add(const EvalMissingItem(
-        item: '联系方式',
-        why: '缺少邮箱/电话等联系信息，招聘方无法联系。',
-        suggestion: '在个人资料中补充邮箱、电话、城市与主页。',
-        severity: 'high',
-      ));
-      rec('补充联系方式（邮箱/电话/主页）', 12, 'low', '基础必备项，几乎零成本。');
-    }
-    if (!hasEdu) {
-      missing.add(const EvalMissingItem(
-        item: '教育经历',
-        why: '教育背景是多数岗位的硬性筛选项。',
-        suggestion: '补录学校、专业、学历与时间。',
-        severity: 'high',
-      ));
-      rec('补充教育经历', 18, 'medium', '提升完整度与 ATS 命中。');
-    }
-    if (!hasExp) {
-      missing.add(const EvalMissingItem(
-        item: '工作/实习经历',
-        why: '经历是简历的核心证据。',
-        suggestion: '补录实习/工作，并用 STAR 写出成果。',
-        severity: 'high',
-      ));
-      rec('补充工作/实习经历', 22, 'medium', '对匹配度与可信度提升最大。');
-    }
-    if (!hasSkills) {
-      missing.add(const EvalMissingItem(
-        item: '技能清单',
-        why: '技能是 ATS 关键词的主要载体。',
-        suggestion: '按目标岗位列出硬技能与工具。',
-        severity: 'high',
-      ));
-      rec('补充技能清单并对齐 JD 用词', 16, 'low', '低成本提升关键词覆盖。');
-    }
-    if (!hasSummary) {
-      missing.add(const EvalMissingItem(
-        item: '个人简介',
-        why: '缺少一句话定位，招聘方难以快速判断匹配。',
-        suggestion: '写 2–3 句定位 + 核心优势。',
-        severity: 'medium',
-      ));
-      rec('补写个人简介/headline', 10, 'low', '快速提升开头吸引力。');
-    }
-    if (impactScore < 50) {
-      missing.add(EvalMissingItem(
-        item: '量化成果',
-        why: '大量条目缺少数字，说服力不足。',
-        suggestion: '给关键 bullet 加上规模/比例/金额/周期等数字。',
-        severity: impactScore < 25 ? 'high' : 'medium',
-      ));
-      rec('为关键经历补充量化数字', 18, 'low', 'STAR/XYZ 量化是高分要点。');
-    }
-    if (targetKeywords.isNotEmpty && matchScore < 55) {
-      missing.add(const EvalMissingItem(
-        item: '目标岗位关键词',
-        why: '简历措辞与目标岗位/企业匹配度偏低。',
-        suggestion: '把 JD 中的硬技能与工具名原样写入技能与经历。',
-        severity: 'high',
-      ));
-      rec('对齐目标岗位关键词', 20, 'low', '直接提升匹配度与 ATS。');
-    }
-    if (atsScore < 60) {
-      missing.add(const EvalMissingItem(
-        item: 'ATS 友好度',
-        why: '章节结构或关键词不利机器筛选。',
-        suggestion: '使用标准章节标题，避免照片/多栏/图形。',
-        severity: 'medium',
-      ));
-      rec('优化 ATS 结构（标准章节/单列）', 10, 'low', '降低被过滤风险。');
-    }
-    final hasLink = doc.header.contacts.any(
-          (c) => (c.url ?? '').trim().isNotEmpty || c.value.contains('http'),
-        );
-    final hasAttachment = doc.sections.any((s) => s.items.any((i) => i.attachments.isNotEmpty));
-    if (!hasLink && !hasAttachment) {
-      missing.add(const EvalMissingItem(
-        item: '作品/链接',
-        why: '缺少主页、GitHub 或作品集佐证。',
-        suggestion: '补充个人主页/GitHub/作品链接；技术岗尤其重要。',
-        severity: 'medium',
-      ));
-      rec('补充作品集/主页链接', 8, 'low', '增强可信度与差异化。');
-    }
-    if (request.pageLimit > 0) {
-      final target = request.pageLimit * 900.0;
-      if (chars > target * 1.2) {
-        missing.add(const EvalMissingItem(
-          item: '篇幅超限',
-          why: '内容超过目标页数，可能被截断或显得冗长。',
-          suggestion: '压缩弱相关经历，删去无结果描述。',
-          severity: 'medium',
-        ));
-        rec('精简篇幅至目标页数内', 9, 'low', '提升可读性。');
-      } else if (chars < target * 0.5) {
-        missing.add(const EvalMissingItem(
-          item: '内容偏薄',
-          why: '内容量低于目标页数，信息密度不足。',
-          suggestion: '补充项目细节与量化成果，或调整页数目标。',
-          severity: 'medium',
-        ));
-        rec('补充项目细节与成果', 12, 'medium', '充实内容与匹配度。');
-      }
-    }
-    if (differentiationScore < 50) {
-      missing.add(const EvalMissingItem(
-        item: '差异化亮点',
-        why: '简历缺少独特优势标签，易与同类候选人同质化。',
-        suggestion: '提炼 2–3 条独家优势或高含金量成果。',
-        severity: 'medium',
-      ));
-      rec('提炼差异化亮点清单', 10, 'medium', '提升区分度。');
-    }
-    if (languageScore < 60) {
-      missing.add(const EvalMissingItem(
-        item: '专业表达',
-        why: '存在弱化动词或占位文本，降低专业感。',
-        suggestion: '用强动词开头，清除「待补充/TODO」等占位符。',
-        severity: 'low',
-      ));
-      rec('润色动词与清除占位文本', 8, 'low', '低成本提升专业度。');
-    }
-
-    if (recs.isEmpty) {
-      rec('保持与目标岗位对齐，持续加入新成果', 5, 'low', '整体已较完善，边际收益有限。');
-    }
-
-    final ranked = _rankByMarginalBenefit(recs);
-
-    return ResumeEvaluation(
+    final overall = ObjectiveScore.computeOverall(dimensions);
+    final sortedDims = [...dimensions]..sort((a, b) => b.score.compareTo(a.score));
+    final strengths = [
+      for (final d in sortedDims)
+        if (d.score >= 80) d.label,
+    ];
+    final weaknesses = [
+      for (final d in sortedDims.reversed)
+        if (d.score < 60) d.label,
+    ];
+    if (strengths.isEmpty && sortedDims.isNotEmpty) strengths.add(sortedDims.first.label);
+    if (weaknesses.isEmpty && sortedDims.isNotEmpty) weaknesses.add(sortedDims.last.label);
+    final objective = ObjectiveScore(
       overall: overall,
       dimensions: dimensions,
-      missing: missing,
-      recommendations: ranked,
+      strengths: strengths,
+      weaknesses: weaknesses,
+      summary: _objectiveSummary(overall, sortedDims),
+    );
+
+    // --- 岗位适配诊断（fit） ---
+
+    final fit = _buildFit(
+      request: request,
+      hay: hay,
+      hasLink: hasLink,
+      hasExp: hasExp,
+      impactScore: impactScore,
+    );
+
+    return ResumeEvaluation(
+      fit: fit,
+      objective: objective,
       targetRole: request.targetRole.trim().isEmpty ? null : request.targetRole.trim(),
-      targetCompany: request.targetCompany.trim().isEmpty ? null : request.targetCompany.trim(),
-      summary: _summaryText(overall, missing, dimensions),
+      targetCompany:
+          request.targetCompany.trim().isEmpty ? null : request.targetCompany.trim(),
       aiAssisted: false,
       model: null,
       generatedAt: now ?? DateTime.now(),
     );
+  }
+
+  FitAnalysis _buildFit({
+    required ExportRequest request,
+    required String hay,
+    required bool hasLink,
+    required bool hasExp,
+    required int impactScore,
+  }) {
+    final roleText = request.targetRole.trim();
+    final profile = RoleProfiles.match(roleText);
+    if (profile == null) {
+      return _genericFit(
+        roleText: roleText,
+        hay: hay,
+        hasLink: hasLink,
+        impactScore: impactScore,
+      );
+    }
+
+    final hardReqs = <HardRequirement>[];
+    final missing = <FitMissingItem>[];
+    final certStatus = <String, String>{};
+
+    var certHave = 0;
+    for (final c in profile.requiredCerts) {
+      String? hit;
+      for (final t in _certTerms(c.name)) {
+        if (_mentions(hay, t)) {
+          hit = t;
+          break;
+        }
+      }
+      final status = hit != null ? 'have' : 'missing';
+      certStatus[c.name] = status;
+      if (status == 'have') certHave++;
+      hardReqs.add(HardRequirement(
+        name: c.name,
+        status: status,
+        importance: c.mandatory ? 'required' : 'preferred',
+        evidence: hit == null ? '' : '简历中出现「$hit」',
+        note: hit != null
+            ? '已满足。'
+            : (c.mandatory ? '硬性门槛，缺失将大概率被直接筛掉。' : '加分项，缺失降低竞争力但不阻断投递。'),
+      ));
+      if (status == 'missing') {
+        missing.add(FitMissingItem(
+          item: c.name,
+          category: 'cert',
+          importance: c.mandatory ? 'required' : 'preferred',
+          why: c.mandatory ? '多数岗位的硬性准入条件。' : '常用加分项，可提升竞争力。',
+          suggestion: '尽快报名获取「${c.name}」。',
+        ));
+      }
+    }
+
+    final missingSkills = profile.coreSkills.where((s) => !_mentions(hay, s)).toList();
+    final skillRatio = profile.coreSkills.isEmpty
+        ? 1.0
+        : (profile.coreSkills.length - missingSkills.length) / profile.coreSkills.length;
+    for (final s in missingSkills) {
+      missing.add(FitMissingItem(
+        item: s,
+        category: 'skill',
+        importance: 'required',
+        why: '目标岗位核心技能，简历未体现。',
+        suggestion: '通过学习/项目补上「$s」，并在技能与经历中量化落地。',
+      ));
+    }
+
+    final missingExps =
+        profile.typicalExperiences.where((e) => !_mentions(hay, e)).toList();
+    final expRatio = profile.typicalExperiences.isEmpty
+        ? 1.0
+        : (profile.typicalExperiences.length - missingExps.length) /
+            profile.typicalExperiences.length;
+    for (final e in missingExps) {
+      missing.add(FitMissingItem(
+        item: e,
+        category: 'experience',
+        importance: 'required',
+        why: '该岗位看重的典型经历，简历缺少同类证据。',
+        suggestion: '争取/补充「$e」，并用 STAR 写出量化成果。',
+      ));
+    }
+
+    final certRatio = profile.requiredCerts.isEmpty
+        ? null
+        : certHave / profile.requiredCerts.length;
+
+    double score;
+    if (certRatio == null) {
+      score = skillRatio * 0.6 + expRatio * 0.4;
+    } else {
+      score = certRatio * 0.4 + skillRatio * 0.35 + expRatio * 0.25;
+    }
+    var fitScore = (score * 100).round().clamp(0, 100);
+    final hasMandatoryMissing = profile.requiredCerts
+        .any((c) => c.mandatory && certStatus[c.name] == 'missing');
+    if (hasMandatoryMissing) fitScore = math.min(fitScore, 60);
+
+    // 行动清单：过滤已满足项，按「预估提升 × 投入权重」排序赋 priority。
+    final recs = <FitAction>[];
+    for (final a in profile.actions) {
+      if (_actionSatisfied(a, certStatus)) continue;
+      var gain = a.expectedGain;
+      final actionLower = a.action.toLowerCase();
+      for (final c in profile.requiredCerts) {
+        if (c.mandatory &&
+            certStatus[c.name] == 'missing' &&
+            _certTerms(c.name).any((t) => _mentions(actionLower, t))) {
+          gain += 8;
+        }
+      }
+      recs.add(FitAction(
+        action: a.action,
+        category: a.category,
+        expectedGain: gain.clamp(0, 100),
+        effort: a.effort,
+        timeEstimate: a.timeEstimate,
+        priority: 0,
+        rationale: a.rationale,
+        resources: a.resources,
+      ));
+    }
+    if (recs.isEmpty) {
+      recs.add(FitAction(
+        action: '保持与目标岗位对齐，持续积累新成果',
+        category: 'other',
+        expectedGain: 5,
+        effort: 'low',
+        timeEstimate: '长期',
+        rationale: '当前画像要点已基本满足，边际收益有限。',
+      ));
+    }
+
+    final summary = '目标岗位「${profile.name}」：硬性证书命中 $certHave/'
+        '${profile.requiredCerts.length}，核心技能覆盖 ${(skillRatio * 100).round()}%，'
+        '典型经历覆盖 ${(expRatio * 100).round()}%，共 ${missing.length} 项待补齐。';
+
+    return FitAnalysis(
+      fitScore: fitScore,
+      hardRequirements: hardReqs,
+      missing: missing,
+      recommendations: rankByMarginalBenefit(recs),
+      summary: summary,
+      roleProfileId: profile.id,
+      roleName: profile.name,
+    );
+  }
+
+  FitAnalysis _genericFit({
+    required String roleText,
+    required String hay,
+    required bool hasLink,
+    required int impactScore,
+  }) {
+    final missing = <FitMissingItem>[];
+    final recs = <FitAction>[];
+    var fitScore = 0;
+    String summary;
+
+    if (roleText.isEmpty) {
+      summary = '未填写目标岗位，无法进行针对性适配诊断；建议在问卷中补充目标岗位。';
+    } else {
+      final kws = _keywordsFrom([roleText]);
+      final ratio = _matchedRatio(kws, hay);
+      fitScore = (30 + ratio * 50).round().clamp(0, 100);
+      summary = '未识别到内置画像，按目标关键词「$roleText」覆盖率 '
+          '${(ratio * 100).round()}% 估算适配度。';
+      if (ratio < 0.6) {
+        missing.add(const FitMissingItem(
+          item: '目标岗位关键词',
+          category: 'skill',
+          importance: 'required',
+          why: '简历措辞与目标岗位匹配不足，ATS/HR 难以判断相关性。',
+          suggestion: '把 JD 中的硬技能与工具名原样写入技能与经历。',
+        ));
+      }
+    }
+
+    if (impactScore < 50) {
+      missing.add(const FitMissingItem(
+        item: '量化成果',
+        category: 'other',
+        importance: 'required',
+        why: '关键经历缺少数字，说服力不足。',
+        suggestion: '用规模/比例/金额/周期量化关键经历。',
+      ));
+    }
+    if (!hasLink) {
+      missing.add(const FitMissingItem(
+        item: '作品/主页链接',
+        category: 'portfolio',
+        importance: 'preferred',
+        why: '缺少可验证的佐证材料。',
+        suggestion: '补充 GitHub / 作品集 / 个人主页。',
+      ));
+    }
+
+    void add(String action, String category, int gain, String effort, String time,
+        String rationale, [List<String> resources = const []]) {
+      recs.add(FitAction(
+        action: action,
+        category: category,
+        expectedGain: gain,
+        effort: effort,
+        timeEstimate: time,
+        priority: 0,
+        rationale: rationale,
+        resources: resources,
+      ));
+    }
+
+    add('为关键经历补充量化数字', 'other', 18, 'low', '1 天',
+        'STAR/XYZ 量化是提升可信度与评分的最低成本手段。');
+    add('补充与目标岗位相关的实习/项目', 'experience', 22, 'medium', '1–3 个月',
+        '相关经历是匹配度最强的证据，直接提升录取概率。');
+    add('补充证书/资质或作品集', 'cert', 15, 'low', '1–2 周',
+        '证书与作品集可快速补强硬性条件与差异化。');
+    if (roleText.isNotEmpty) {
+      add('对齐目标岗位关键词', 'skill', 20, 'low', '1 天',
+          '将 JD 术语原样写入简历，提升 ATS 与 HR 相关性判断。');
+    }
+
+    return FitAnalysis(
+      fitScore: fitScore,
+      missing: missing,
+      recommendations: rankByMarginalBenefit(recs),
+      summary: summary,
+    );
+  }
+
+  /// 已满足判定：若某必需证书已具备且该行动明显指向它，则视为已完成。
+  bool _actionSatisfied(RoleAction a, Map<String, String> certStatus) {
+    final al = a.action.toLowerCase();
+    for (final e in certStatus.entries) {
+      if (e.value == 'have' && _certTerms(e.key).any((t) => _mentions(al, t))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // --- AI 评估 ---
@@ -332,7 +440,7 @@ class ResumeEvalService {
       ..writeln('【待处理数据开始】')
       ..writeln(jsonEncode(payload))
       ..writeln('【待处理数据结束】')
-      ..writeln('请仅输出评估 JSON（dimensions/missing/recommendations/overall/summary）。');
+      ..writeln('请仅输出评估 JSON（fit 与 objective 两段）。');
 
     final res = await llm.chatCompletion(
       baseUrl: baseUrl,
@@ -352,36 +460,62 @@ class ResumeEvalService {
       var map = decoded.cast<String, dynamic>();
       final inner = map['evaluation'] ?? map['result'];
       if (inner is Map) map = inner.cast<String, dynamic>();
-      final eval = ResumeEvaluation.fromJson(map);
-      if (eval.dimensions.isEmpty) {
-        return const Err('模型评估缺少 dimensions 字段。');
+      var eval = ResumeEvaluation.fromJson(map);
+      if (eval.objective.dimensions.isEmpty && eval.fit.recommendations.isEmpty) {
+        return const Err('模型评估缺少 objective.dimensions / fit 字段。');
       }
-      final overall =
-          eval.overall > 0 ? eval.overall : ResumeEvaluation.computeOverall(eval.dimensions);
-      return Ok(eval.copyWith(
-        overall: overall,
-        targetRole: request.targetRole.trim().isEmpty ? eval.targetRole : request.targetRole.trim(),
-        targetCompany:
-            request.targetCompany.trim().isEmpty ? eval.targetCompany : request.targetCompany.trim(),
+      final overall = eval.objective.overall > 0
+          ? eval.objective.overall
+          : ObjectiveScore.computeOverall(eval.objective.dimensions);
+      eval = eval.copyWith(
+        objective: eval.objective.copyWith(overall: overall),
+        targetRole: request.targetRole.trim().isEmpty
+            ? eval.targetRole
+            : request.targetRole.trim(),
+        targetCompany: request.targetCompany.trim().isEmpty
+            ? eval.targetCompany
+            : request.targetCompany.trim(),
         aiAssisted: true,
         model: model,
         generatedAt: DateTime.now(),
-      ));
+      );
+      return Ok(eval);
     } catch (e) {
       return Err('解析模型评估失败：$e', e);
     }
   }
 
-  // --- 评分辅助 ---
-
-  int _matchScore(ResumeDocument doc, Set<String> keywords, List<String> itemTexts) {
-    if (keywords.isEmpty) return 60;
-    final hay = itemTexts.join(' ').toLowerCase();
-    var score = (_matchedRatio(keywords, hay) * 100).round();
-    final role = (doc.meta['target_role'] ?? '').toString().toLowerCase();
-    if (role.trim().isNotEmpty && hay.contains(role.trim())) score = math.min(100, score + 15);
-    return score.clamp(0, 100);
+  /// 按「预估提升 × 投入权重」降序赋 priority（=边际效益排序）。
+  static List<FitAction> rankByMarginalBenefit(List<FitAction> recs) {
+    double factor(String effort) => switch (effort) {
+          'low' => 1.0,
+          'high' => 0.35,
+          _ => 0.6,
+        };
+    final indexed = [for (var i = 0; i < recs.length; i++) (i, recs[i])];
+    indexed.sort((a, b) {
+      final va = a.$2.expectedGain * factor(a.$2.effort);
+      final vb = b.$2.expectedGain * factor(b.$2.effort);
+      final c = vb.compareTo(va);
+      return c != 0 ? c : a.$1.compareTo(b.$1);
+    });
+    return [
+      for (var i = 0; i < indexed.length; i++)
+        FitAction(
+          action: indexed[i].$2.action,
+          category: indexed[i].$2.category,
+          expectedGain: indexed[i].$2.expectedGain,
+          effort: indexed[i].$2.effort,
+          timeEstimate: indexed[i].$2.timeEstimate,
+          priority: i + 1,
+          rationale: indexed[i].$2.rationale,
+          resources: indexed[i].$2.resources,
+          done: indexed[i].$2.done,
+        ),
+    ];
   }
+
+  // --- 评分辅助 ---
 
   int _impactScore(List<String> bullets, ResumeDocument doc, List<String> itemTexts) {
     final pool = bullets.isNotEmpty
@@ -485,42 +619,9 @@ class ResumeEvalService {
     return score.round().clamp(0, 100);
   }
 
-  List<EvalRecommendation> _rankByMarginalBenefit(List<EvalRecommendation> recs) {
-    double factor(String effort) => switch (effort) {
-          'low' => 1.0,
-          'high' => 0.35,
-          _ => 0.6,
-        };
-    final sorted = [...recs]
-      ..sort((a, b) {
-        final va = a.expectedGain * factor(a.effort);
-        final vb = b.expectedGain * factor(b.effort);
-        return vb.compareTo(va);
-      });
-    return [
-      for (var i = 0; i < sorted.length; i++)
-        EvalRecommendation(
-          item: sorted[i].item,
-          expectedGain: sorted[i].expectedGain,
-          effort: sorted[i].effort,
-          priority: i + 1,
-          rationale: sorted[i].rationale,
-        ),
-    ];
-  }
-
-  String _summaryText(int overall, List<EvalMissingItem> missing, List<EvalDimension> dims) {
-    final weakest = [...dims]..sort((a, b) => a.score.compareTo(b.score));
-    final tail = weakest.isEmpty ? '' : '；当前最弱维度为「${weakest.first.label}」。';
-    if (missing.isEmpty) {
-      return '综合评分 $overall/100，整体较完善$tail';
-    }
-    return '综合评分 $overall/100，共发现 ${missing.length} 项可改进点$tail';
-  }
-
-  List<String> _evidenceKeywords(ResumeDocument doc, Set<String> keywords, List<String> itemTexts) {
-    final hay = itemTexts.join(' ').toLowerCase();
-    return keywords.where((k) => hay.contains(k)).take(8).toList();
+  String _objectiveSummary(int overall, List<EvalDimension> sortedDims) {
+    final tail = sortedDims.isEmpty ? '' : '；当前最弱维度为「${sortedDims.last.label}」。';
+    return '客观质量评分 $overall/100$tail';
   }
 
   List<String> _evidenceQuant(List<String> bullets) =>
@@ -624,6 +725,49 @@ class ResumeEvalService {
   }
 
   int _charCount(String s) => s.replaceAll(_whitespace, '').runes.length;
+}
+
+// --- 岗位匹配辅助 ---
+
+/// 证书名 -> 可命中词（去掉「证/证书」后缀、拆分斜杠、提取等级前缀）。
+Set<String> _certTerms(String name) {
+  final out = <String>{};
+  final cleaned = name.replaceAll(RegExp(r'[（(].*?[）)]'), '');
+  for (final part in cleaned.split(RegExp(r'[/、,，]'))) {
+    var p = part.trim();
+    if (p.isEmpty) continue;
+    out.add(p);
+    if (p.endsWith('证书') && p.length > 2) {
+      p = p.substring(0, p.length - 2);
+    } else if (p.endsWith('证') && p.length > 1) {
+      p = p.substring(0, p.length - 1);
+    }
+    out.add(p);
+    if (p.contains('资格证')) out.add(p.replaceAll('资格证', '资格'));
+    if (p.contains('等级证')) out.add(p.replaceAll('等级证', ''));
+    if (p.contains('等级')) {
+      final idx = p.indexOf('等级');
+      if (idx >= 2) out.add(p.substring(0, idx));
+    }
+    if (p.contains('合格证')) {
+      final idx = p.indexOf('合格证');
+      if (idx >= 2) out.add(p.substring(0, idx));
+    }
+  }
+  out.removeWhere((e) => e.trim().length < 2);
+  return out;
+}
+
+/// 在已小写的全文里判断某个（可能含 /、括号的）词是否出现（任一子词命中即算）。
+bool _mentions(String hayLower, String term) {
+  final t = term.toLowerCase().trim();
+  if (t.isEmpty) return false;
+  for (final rawPart in t.split(RegExp(r'[/、,，()（）]'))) {
+    final p = rawPart.trim();
+    if (p.length < 2) continue;
+    if (hayLower.contains(p)) return true;
+  }
+  return false;
 }
 
 // --- 常量与正则 ---

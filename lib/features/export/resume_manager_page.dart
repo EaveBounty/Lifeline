@@ -10,6 +10,7 @@ import '../../core/platform/io_platform.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/export_request.dart';
 import '../../data/providers.dart';
+import '../../services/render/templates.dart';
 
 class ResumeManagerPage extends ConsumerWidget {
   const ResumeManagerPage({super.key});
@@ -86,7 +87,8 @@ class _ResumeTile extends ConsumerWidget {
             if (meta.evaluation != null) ...[
               const SizedBox(width: 8),
               _ScoreBadge(
-                score: meta.evaluation!.overall,
+                objective: meta.evaluation!.objective.overall,
+                fit: meta.evaluation!.fit.fitScore,
                 ai: meta.evaluation!.aiAssisted,
               ),
             ],
@@ -98,6 +100,7 @@ class _ResumeTile extends ConsumerWidget {
             if (subtitle.isNotEmpty) Text(subtitle),
             Text(
               '${_statusLabel(meta.status)} · ${_fmt(meta.updatedAt)}'
+              ' · ${ResumeTemplates.byId(meta.templateId ?? meta.request?.templateId).name}'
               '${meta.files.isEmpty ? '' : ' · ${meta.files.keys.join('/')}'}',
               style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
             ),
@@ -249,22 +252,23 @@ class _ResumeTile extends ConsumerWidget {
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 }
 
-/// 列表项上的总分徽章。
+/// 列表项上的总分徽章：显示「适配/客观」两分（启发式或 AI）。
 class _ScoreBadge extends StatelessWidget {
-  const _ScoreBadge({required this.score, required this.ai});
-  final int score;
+  const _ScoreBadge({required this.objective, required this.fit, required this.ai});
+  final int objective;
+  final int fit;
   final bool ai;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = score >= 80
+    final color = objective >= 80
         ? Colors.green.shade600
-        : score >= 60
+        : objective >= 60
             ? Colors.orange.shade700
             : scheme.error;
     return Tooltip(
-      message: ai ? 'AI 评估总分' : '启发式评估总分',
+      message: '${ai ? 'AI' : '启发式'}评估：适配 $fit / 客观 $objective',
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
@@ -279,7 +283,7 @@ class _ScoreBadge extends StatelessWidget {
               const SizedBox(width: 3),
             ],
             Text(
-              '$score',
+              '$fit/$objective',
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.bold,

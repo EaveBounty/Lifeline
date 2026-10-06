@@ -19,6 +19,9 @@ class ExportRequest {
   final bool researchEnabled;
   final String extraNotes;
 
+  /// 简历模板 id（见 `services/render/templates.dart`）。
+  final String templateId;
+
   const ExportRequest({
     this.purpose = '求职',
     this.targetRole = '',
@@ -33,6 +36,7 @@ class ExportRequest {
     this.exclude = const [],
     this.researchEnabled = true,
     this.extraNotes = '',
+    this.templateId = 'ats-classic',
   });
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +53,7 @@ class ExportRequest {
         'exclude': exclude,
         'research_enabled': researchEnabled,
         'extra_notes': extraNotes,
+        'template_id': templateId,
       };
 
   factory ExportRequest.fromJson(Map<String, dynamic> j) => ExportRequest(
@@ -65,6 +70,7 @@ class ExportRequest {
         exclude: (j['exclude'] as List?)?.map((e) => '$e').toList() ?? const [],
         researchEnabled: (j['research_enabled'] ?? true) as bool,
         extraNotes: (j['extra_notes'] ?? '') as String,
+        templateId: (j['template_id'] ?? 'ats-classic') as String,
       );
 }
 
@@ -90,6 +96,9 @@ class ResumeMeta {
   /// 生成该简历时使用的问卷（旧数据可能缺失）。
   final ExportRequest? request;
 
+  /// 生成该简历时使用的模板 id（旧数据可能缺失）。
+  final String? templateId;
+
   /// 多角度评估结果（旧数据可能缺失）。
   final ResumeEvaluation? evaluation;
 
@@ -110,6 +119,7 @@ class ResumeMeta {
     this.providerModel,
     this.researchDigest,
     this.request,
+    this.templateId,
     this.evaluation,
     required this.createdAt,
     required this.updatedAt,
@@ -128,6 +138,7 @@ class ResumeMeta {
     String? providerModel,
     String? researchDigest,
     ExportRequest? request,
+    String? templateId,
     ResumeEvaluation? evaluation,
     DateTime? updatedAt,
     String? notes,
@@ -145,6 +156,7 @@ class ResumeMeta {
         providerModel: providerModel ?? this.providerModel,
         researchDigest: researchDigest ?? this.researchDigest,
         request: request ?? this.request,
+        templateId: templateId ?? this.templateId,
         evaluation: evaluation ?? this.evaluation,
         createdAt: createdAt,
         updatedAt: updatedAt ?? DateTime.now(),
@@ -164,6 +176,7 @@ class ResumeMeta {
         'provider_model': providerModel,
         'research_digest': researchDigest,
         'request': request?.toJson(),
+        'template_id': templateId,
         'evaluation': evaluation?.toJson(),
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
@@ -183,6 +196,7 @@ class ResumeMeta {
         providerModel: j['provider_model'] as String?,
         researchDigest: j['research_digest'] as String?,
         request: _parseRequest(j['request']),
+        templateId: j['template_id'] as String?,
         evaluation: _parseEvaluation(j['evaluation']),
         createdAt: DateTime.tryParse('${j['created_at']}') ?? DateTime.now(),
         updatedAt: DateTime.tryParse('${j['updated_at']}') ?? DateTime.now(),

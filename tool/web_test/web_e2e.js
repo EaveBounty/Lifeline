@@ -157,7 +157,7 @@ async function main() {
 
   // 1) 首启（不带 demo，干净上下文）
   {
-    console.log('[1/7] 首启同步根选择页');
+    console.log('[1/8] 首启同步根选择页');
     const { ctx, page, text } = await openPage(browser, {
       label: 'onboarding',
       query: '?r=onboarding',
@@ -171,7 +171,7 @@ async function main() {
 
   // 2) 首页完整简历
   {
-    console.log('[2/7] 首页完整简历');
+    console.log('[2/8] 首页完整简历');
     const { ctx, page, text } = await openPage(browser, {
       label: 'home',
       query: '?demo=1&r=home#/',
@@ -186,7 +186,7 @@ async function main() {
 
   // 3) 记录编辑（已填示例记录）
   {
-    console.log('[3/7] 记录编辑页');
+    console.log('[3/8] 记录编辑页');
     const { ctx, page, text } = await openPage(browser, {
       label: 'record-edit',
       query: '?demo=1&r=edit#/records/demo-exp-0001/edit',
@@ -201,7 +201,7 @@ async function main() {
 
   // 4) AI 自动录入
   {
-    console.log('[4/7] AI 自动录入页');
+    console.log('[4/8] AI 自动录入页');
     const { ctx, page, text } = await openPage(browser, {
       label: 'capture',
       query: '?demo=1&r=capture#/capture',
@@ -216,7 +216,7 @@ async function main() {
 
   // 5) 定向导出问卷
   {
-    console.log('[5/7] 定向导出问卷页');
+    console.log('[5/8] 定向导出问卷页');
     const { ctx, page, text } = await openPage(browser, {
       label: 'export',
       query: '?demo=1&r=export#/export',
@@ -232,7 +232,7 @@ async function main() {
 
   // 6) 简历库（示例简历 + 评估分数）
   {
-    console.log('[6/7] 简历库页');
+    console.log('[6/8] 简历库页');
     const { ctx, page, text } = await openPage(browser, {
       label: 'resumes',
       query: '?demo=1&r=resumes#/resumes',
@@ -241,14 +241,29 @@ async function main() {
     });
     assert(text.includes('简历库'), '出现「简历库」');
     assert(text.includes('后端工程师 · 示例科技'), '出现示例简历名');
-    assert(/启发式评估总分/.test(text), '出现评估总分徽章');
+    assert(text.includes('适配') && text.includes('客观'), '出现评估徽章（适配/客观）');
     assert(/\b\d{1,3}\b/.test(text), '出现数值化评估分数');
     await ctx.close();
   }
 
-  // 7) 真实交互：首页点击「添加信息」→ 跳转新增记录
+  // 7) 简历评估（一体两面：岗位适配诊断 + 客观质量评分）
   {
-    console.log('[7/7] 交互：点击「添加信息」');
+    console.log('[7/8] 简历评估页');
+    const { ctx, page, text } = await openPage(browser, {
+      label: 'eval',
+      query: '?demo=1&r=eval#/resumes/eval/demo-resume-0001',
+      height: 1400,
+      shot: 'screenshot-eval.png',
+    });
+    assert(text.includes('岗位适配') || text.includes('适配诊断'), '出现「岗位适配诊断」');
+    assert(text.includes('客观质量') || text.includes('客观'), '出现「客观质量评分」');
+    assert(text.includes('行动') || text.includes('建议'), '出现改进行动建议');
+    await ctx.close();
+  }
+
+  // 8) 真实交互：首页点击「添加信息」→ 跳转新增记录
+  {
+    console.log('[8/8] 交互：点击「添加信息」');
     const ctx = await newContext(browser, 900);
     const page = await ctx.newPage();
     hookErrors(page, 'interaction');
@@ -291,6 +306,7 @@ async function main() {
     'screenshot-capture.png',
     'screenshot-export.png',
     'screenshot-resumes.png',
+    'screenshot-eval.png',
   ];
   console.log('\n截图产物：');
   for (const s of shots) {
@@ -304,7 +320,7 @@ async function main() {
     console.log(`\nFAIL：${failures.length} 项未通过`);
     process.exit(1);
   }
-  console.log('\nPASS：全部断言通过，0 浏览器错误，6 张截图已生成。');
+  console.log('\nPASS：全部断言通过，0 浏览器错误，7 张截图已生成。');
 }
 
 main().catch((e) => {

@@ -9,6 +9,15 @@
 - U0 脚手架；U1 数据层；U2 首启与设置；U3 信息表与附件；U4 首页完整简历；
   U5 编译管线与渲染器；U6 AI 录入/编译；U7 智能导出；U8 同步文档；U9 测试与 CI。
 
+## [0.2.0] - 2026-10-06
+
+### 新增
+- **Web 平台**：`lib/core/platform/`（dart:io 内存兼容层条件导出）、`RecordIndex` 抽象（drift↔内存）、`ChangeWatcher` 条件实现、web 首启内存演示入口；`flutter build web --release --no-web-resources-cdn` 可运行，桌面/移动端行为不变。
+- **浏览器端到端测试**：`tool/web_test/`（Playwright 无头 Chromium，8 步断言、0 console/pageerror，ImageMagick 校验截图非空白）；`?demo=1` 演示种子；Web 语义树供测试定位。
+- **简历评估（一体两面）**：`FitAnalysis`（岗位适配诊断）+ `ObjectiveScore`（客观质量评分），schema v2 兼容 v1；岗位画像库 `lib/data/role_profiles.dart`（16 类岗位：证书/技能/经历/加分/行动+资源）；启发式按边际效益排序生成提升行动；评估页分段展示 + 可寻址路由 `/resumes/eval/:id`。
+- **导出多模板**：`services/render/templates.dart`（10 套风格 + 岗位推荐）；`DartPdfRenderer` 5 种版式；Typst 四套模板串；`ExportRequest`/`ResumeMeta` 增 `templateId`；导出页模板选择 + 简历库显示模板名。
+- README 真实运行截图 7 张；`CHANGELOG.md` 记录.
+
 ## [0.1.0] - 2026-10-06
 
 ### 新增
