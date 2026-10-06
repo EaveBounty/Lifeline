@@ -67,6 +67,10 @@ ai:
       capabilities: [text, vision, json]
       enabled: true
       extra_headers: {}                 # 保存前会剥离 Authorization / 密钥类头部
+categories:                            # 开放分类（用户可增/改/删/排序）；缺失时用内置默认集
+  - { slug: education, label: 教育经历, icon: school, order: 0 }
+  - { slug: experience, label: 工作/实习经历, icon: work, order: 1 }
+  # …
 export:
   default_formats: [pdf, docx, md]
 compile:
@@ -79,6 +83,9 @@ extra: {}
 
 - 实现见 `AppSettings`（`lib/data/models/app_settings.dart`），键名以本表为准。
 - **不含任何密钥**（密钥经 `key_ref` 指向系统密钥库或本地降级文件）。
+- `categories` 为**开放分类**定义（`CategoryDef`）：`slug`（稳定标识，用作目录名/JSON 值）、
+  `label`（显示名）、`icon`（图标键）、`order`（排序）。用户可在应用内编辑；**缺失该键时回退内置默认集**
+  `kDefaultCategories`（`lib/data/models/record_category.dart`）。删分类不删记录。
 - 写入采用 `yaml_writer` 全量序列化（不保留用户注释）。
 
 ---
@@ -225,7 +232,7 @@ LFV1
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` | string(uuid v4) | 全局唯一；文件名同 `id`；一旦创建**不可变** |
-| `category` | enum | 见 §5.3；决定所在子目录 |
+| `category` | string | 分类 slug，见 §5.3；决定所在子目录 |
 | `title` | string | 必填，记录主标题 |
 | `organization` | string? | 机构/公司/学校 |
 | `role` | string? | 角色/职位/身份 |
@@ -244,11 +251,15 @@ LFV1
 | `status` | enum | `active`（默认）/`archived` |
 | `order` | integer | 同类内排序提示；编译器可覆盖 |
 
-### 5.3 分类枚举与子目录
+### 5.3 分类与子目录（开放）
 
-`category` 同时是 `data/records/` 下的子目录名：
+`category` 是**自由字符串 slug**，同时是 `data/records/` 下的子目录名。分类不再固定，
+由 `lifeline.yaml` 的 `categories`（见 §2）定义，用户可增/改/删/排序；**未被登记的 slug（历史遗留或
+被删分类的记录）也能正常读取与编译**（回退显示原 slug）。
 
-`education`、`experience`、`projects`、`awards`、`publications`、`certificates`、`skills`、`activities`、`trainings`、`languages`、`research`、`works`、`interests`、`references`、`custom`。
+内置默认分类（仅首次/无 `categories` 时使用）：`education`、`experience`、`projects`、`research`、
+`awards`、`publications`、`certificates`、`skills`、`languages`、`activities`、`trainings`、`works`、
+`interests`、`references`、`custom`。
 
 各分类推荐 `fields`（非强制）：
 
@@ -425,7 +436,7 @@ CREATE TABLE attachments (
 
 1. 必填：`id`、`category`、`title`、`created_at`、`updated_at`。
 2. `id` 与文件名一致，且为合法 UUID；创建后不可变。
-3. `category` 在枚举内；目录名与之一致。
+3. `category` 为安全 slug（仅字母/数字/`-`/`_`）；目录名与之一致（sanitize 后）。
 4. 日期格式合法；`end_date >= start_date`（当二者均存在）。
 5. `attachments`/`photo.path` 指向存在的相对路径（不存在→警告，不阻断）。
 6. `source.type ∈ {manual, ai, import}`；AI 生成的记录应带 `ai.confidence` 与 `reviewed`。
@@ -438,3 +449,4 @@ CREATE TABLE attachments (
 - 2026-10-06 初版：同步根结构、Record/profile/附件/resumes/state schema、版本迁移、原子写与冲突、索引重建、校验规则（对齐 `ARCHITECTURE.md` §4）。
 - 2026-10-06 对齐实现（B5/B6）：`lifeline.yaml` 改 `app.theme_mode`/`ai.default_provider_id`/`compile`/`research`；`profile.json` 改 `sections{}` 包裹并补 `schema_version`；record/meta/spec 补 `schema_version`；`secrets.local.json` 移至 App 支持目录（`SyncLayout.secretsFile`）；重建索引含附件扫描；修正迁移实现指向 `RecordsRepository.rebuildIndex()`。
 - 2026-10-07 新增加密密钥保险库 `.lifeline/vault.dat`（§3.5）：信封加密（PBKDF2-HMAC-SHA256 210000 + AES-256-GCM，含 wrapped DEK + 数据两段）、`LFV1` 外层混淆（明确「混淆≠安全」）、多设备同口令、迁移与设备缓存说明。
+- 2026-10-07 开放分类：分类改为用户可编辑（`lifeline.yaml` 的 `categories:` 存 `CategoryDef`：slug/label/icon/order）；`category` 字段与目录名改为自由 slug；未登记 slug 亦可读取/编译；删分类可迁移记录（§2、§5.3、§12）。

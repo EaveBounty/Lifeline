@@ -17,7 +17,7 @@ import '../../data/providers.dart';
 import '../../services/secrets/vault_providers.dart';
 
 /// 版本号：与 pubspec.yaml 的 version 保持一致（未引入 package_info_plus）。
-const String _appVersion = '0.1.0+1';
+const String _appVersion = '0.4.2+6';
 const String _githubUrl = 'https://github.com/EaveBounty/Lifeline';
 const String _license = 'PolyForm Noncommercial 1.0.0';
 
@@ -149,6 +149,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const SizedBox(height: 4),
             _ai(settings),
             const SizedBox(height: 4),
+            _categories(),
+            const SizedBox(height: 4),
             _security(),
             const SizedBox(height: 4),
             _data(records),
@@ -275,8 +277,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _security() {
+  Widget _categories() {
     final theme = Theme.of(context);
+    final count = ref.watch(categoriesProvider).length;
+    return SectionCard(
+      title: '信息分类',
+      icon: Icons.category_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('管理分类'),
+            subtitle: Text('共 $count 个分类；可新增 / 重命名 / 换图标 / 排序 / 删除。'),
+            trailing: FilledButton.tonal(
+              onPressed: () => context.push('/settings/categories'),
+              child: const Text('管理'),
+            ),
+          ),
+          Text(
+            '分类完全自定义，不再限制固定大类；删除分类不会删除记录（可选择迁移到其它分类）。',
+            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _security() {    final theme = Theme.of(context);
     final status = ref.watch(vaultStatusProvider).value;
     final exists = status?.exists ?? false;
     final unlocked = status?.unlocked ?? false;
@@ -312,12 +340,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _data(List<ProfileRecord> records) {
     final theme = Theme.of(context);
-    final counts = <RecordCategory, int>{};
+    final categories = ref.watch(categoriesProvider);
+    final counts = <String, int>{};
     for (final r in records) {
-      counts[r.category] = (counts[r.category] ?? 0) + 1;
+      counts[r.categorySlug] = (counts[r.categorySlug] ?? 0) + 1;
     }
-    final nonZero =
-        RecordCategory.values.where((c) => (counts[c] ?? 0) > 0).toList();
+    final nonZero = counts.keys.toList()
+      ..sort((a, b) {
+        final c = resolveCategory(categories, a)
+            .order
+            .compareTo(resolveCategory(categories, b).order);
+        return c != 0 ? c : a.compareTo(b);
+      });
     return SectionCard(
       title: '数据',
       icon: Icons.storage_outlined,
@@ -358,8 +392,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               spacing: 8,
               runSpacing: 8,
               children: nonZero
-                  .map((c) => Chip(
-                        label: Text('${c.labelZh} ${counts[c]}'),
+                  .map((slug) => Chip(
+                        label: Text(
+                            '${resolveCategory(categories, slug).label} ${counts[slug]}'),
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize:
                             MaterialTapTargetSize.shrinkWrap,

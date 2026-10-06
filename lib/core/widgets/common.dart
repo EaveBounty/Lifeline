@@ -3,43 +3,52 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../../data/models/record_category.dart';
+/// 图标键 -> IconData 目录（分类图标可编辑；未知键回退 [_defaultIcon]）。
+const Map<String, IconData> kCategoryIcons = {
+  'school': Icons.school_outlined,
+  'work': Icons.work_outline,
+  'account_tree': Icons.account_tree_outlined,
+  'science': Icons.science_outlined,
+  'emoji_events': Icons.emoji_events_outlined,
+  'menu_book': Icons.menu_book_outlined,
+  'verified': Icons.verified_outlined,
+  'construction': Icons.construction_outlined,
+  'translate': Icons.translate_outlined,
+  'groups': Icons.groups_outlined,
+  'model_training': Icons.model_training_outlined,
+  'palette': Icons.palette_outlined,
+  'sports_esports': Icons.sports_esports_outlined,
+  'contact_phone': Icons.contact_phone_outlined,
+  'category': Icons.category_outlined,
+  'star': Icons.star_outline,
+  'code': Icons.code_outlined,
+  'business_center': Icons.business_center_outlined,
+  'public': Icons.public_outlined,
+  'favorite': Icons.favorite_outline,
+  'home': Icons.home_outlined,
+  'lightbulb': Icons.lightbulb_outline,
+  'rocket_launch': Icons.rocket_launch_outlined,
+  'campaign': Icons.campaign_outlined,
+  'apps': Icons.apps_outlined,
+  'bookmark': Icons.bookmark_outline,
+  'directions_run': Icons.directions_run_outlined,
+  'brush': Icons.brush_outlined,
+  'computer': Icons.computer_outlined,
+  'psychology': Icons.psychology_outlined,
+  'military_tech': Icons.military_tech_outlined,
+  'volunteer_activism': Icons.volunteer_activism_outlined,
+  'attach_money': Icons.attach_money_outlined,
+  'handshake': Icons.handshake_outlined,
+};
 
-/// 分类 -> 图标。
-IconData categoryIcon(RecordCategory category) {
-  switch (category) {
-    case RecordCategory.education:
-      return Icons.school_outlined;
-    case RecordCategory.experience:
-      return Icons.work_outline;
-    case RecordCategory.projects:
-      return Icons.account_tree_outlined;
-    case RecordCategory.research:
-      return Icons.science_outlined;
-    case RecordCategory.awards:
-      return Icons.emoji_events_outlined;
-    case RecordCategory.publications:
-      return Icons.menu_book_outlined;
-    case RecordCategory.certificates:
-      return Icons.verified_outlined;
-    case RecordCategory.skills:
-      return Icons.construction_outlined;
-    case RecordCategory.languages:
-      return Icons.translate_outlined;
-    case RecordCategory.activities:
-      return Icons.groups_outlined;
-    case RecordCategory.trainings:
-      return Icons.model_training_outlined;
-    case RecordCategory.works:
-      return Icons.palette_outlined;
-    case RecordCategory.interests:
-      return Icons.sports_esports_outlined;
-    case RecordCategory.references:
-      return Icons.contact_phone_outlined;
-    case RecordCategory.custom:
-      return Icons.category_outlined;
-  }
-}
+const IconData _defaultIcon = Icons.category_outlined;
+
+/// 图标键 -> 图标；未知键回退默认。
+IconData categoryIcon(String? iconKey) =>
+    kCategoryIcons[iconKey] ?? _defaultIcon;
+
+/// 供图标选择器使用的有序键列表。
+List<String> get categoryIconKeys => kCategoryIcons.keys.toList();
 
 /// 日期区间显示，自动处理「至今」。
 String formatDateRange(String? start, String? end) {

@@ -37,7 +37,7 @@ class _CapturePageState extends ConsumerState<CapturePage> {
   final List<_FieldRow> _fieldRows = [];
 
   EntryDraft? _draft;
-  RecordCategory _category = RecordCategory.custom;
+  String? _category;
   String? _imagePath;
   String? _error;
 
@@ -165,7 +165,7 @@ class _CapturePageState extends ConsumerState<CapturePage> {
     if (draft == null) return;
     setState(() => _saving = true);
 
-    draft.category = _category;
+    draft.category = _category ?? draft.category;
     draft.title = _titleCtrl.text.trim();
     draft.organization = _emptyToNull(_orgCtrl.text);
     draft.role = _emptyToNull(_roleCtrl.text);
@@ -388,6 +388,15 @@ class _CapturePageState extends ConsumerState<CapturePage> {
 
   Widget _draftCard() {
     final draft = _draft!;
+    final categories = ref.watch(categoriesProvider);
+    final fallbackSlug =
+        categories.isNotEmpty ? categories.first.slug : kFallbackCategorySlug;
+    final effective = _category ?? fallbackSlug;
+    final items = <CategoryDef>[
+      ...categories,
+      if (!categories.any((c) => c.slug == effective))
+        CategoryDef(slug: effective, label: effective),
+    ];
     return SectionCard(
       title: '确认草稿',
       icon: Icons.fact_check_outlined,
@@ -411,18 +420,18 @@ class _CapturePageState extends ConsumerState<CapturePage> {
               border: OutlineInputBorder(),
             ),
             child: DropdownButtonHideUnderline(
-              child: DropdownButton<RecordCategory>(
+              child: DropdownButton<String>(
                 isExpanded: true,
-                value: _category,
+                value: effective,
                 items: [
-                  for (final c in RecordCategory.values)
+                  for (final c in items)
                     DropdownMenuItem(
-                      value: c,
-                      child: Text('${c.labelZh}（${c.slug}）'),
+                      value: c.slug,
+                      child: Text('${c.label}（${c.slug}）'),
                     ),
                 ],
                 onChanged: (v) =>
-                    setState(() => _category = v ?? _category),
+                    setState(() => _category = v ?? effective),
               ),
             ),
           ),

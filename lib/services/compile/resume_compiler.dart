@@ -15,6 +15,7 @@ class ResumeCompiler {
     String language = 'zh',
     Map<String, dynamic> meta = const {},
     bool tailored = false,
+    List<CategoryDef> categories = kDefaultCategories,
   }) {
     final en = language == 'en';
     final identity = profile.sections[ProfileSections.identity] ?? const {};
@@ -73,22 +74,41 @@ class ResumeCompiler {
       _FieldKeys.strengths,
     );
 
+    // 按分类 slug 汇聚有效记录（不依赖固定枚举，支持用户自定义分类）。
+    final bySlug = <String, List<ProfileRecord>>{};
+    for (final r in records) {
+      if (r.status != 'active') continue;
+      bySlug.putIfAbsent(r.categorySlug, () => []).add(r);
+    }
+
     final sections = <ResumeSection>[];
-    for (final category in RecordCategory.values) {
-      final items = records
-          .where((r) => r.category == category && r.status == 'active')
-          .toList()
-        ..sort((a, b) {
+    final seen = <String>{};
+
+    void addSection(CategoryDef def) {
+      final items = bySlug[def.slug];
+      if (items == null || items.isEmpty) return;
+      seen.add(def.slug);
+      final sorted = [...items]..sort((a, b) {
           final c = a.order.compareTo(b.order);
           return c != 0 ? c : b.updatedAt.compareTo(a.updatedAt);
         });
-      if (items.isEmpty) continue;
       sections.add(ResumeSection(
-        key: category.sectionKey,
-        title: en ? category.slug : category.labelZh,
-        order: category.defaultOrder,
-        items: items.map(_toItem).toList(),
+        key: def.slug,
+        title: en ? def.slug : def.label,
+        order: def.order,
+        items: sorted.map(_toItem).toList(),
       ));
+    }
+
+    // 已登记分类按 order 输出；未登记分类（历史/被删除分类的遗留记录）追加在后。
+    final ordered = sortedCategories(categories);
+    for (final def in ordered) {
+      addSection(def);
+    }
+    final orphans = bySlug.keys.where((s) => !seen.contains(s)).toList()..sort();
+    var nextOrder = ordered.isEmpty ? 0 : ordered.last.order + 1;
+    for (final slug in orphans) {
+      addSection(CategoryDef(slug: slug, label: slug, order: nextOrder++));
     }
     sections.sort((a, b) => a.order.compareTo(b.order));
 
@@ -124,7 +144,7 @@ class ResumeCompiler {
       attachments: record.attachments,
       tags: record.tags,
       sourceRecordId: record.id,
-      categorySlug: record.category.slug,
+      categorySlug: record.categorySlug,
       weight: 1.0,
     );
   }

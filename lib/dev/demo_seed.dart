@@ -11,7 +11,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/export_request.dart';
 import '../data/models/profile.dart';
 import '../data/models/profile_record.dart';
-import '../data/models/record_category.dart';
 import '../data/providers.dart';
 import '../data/repositories/profile_repository.dart';
 import '../data/repositories/records_repository.dart';
@@ -143,7 +142,7 @@ Profile _profile(DateTime now) => Profile(
 List<ProfileRecord> _records(DateTime now) => [
       ProfileRecord(
         id: 'demo-edu-0001',
-        category: RecordCategory.education,
+        categorySlug: 'education',
         title: '示例大学 · 计算机科学与技术',
         organization: '示例大学',
         role: '本科',
@@ -160,7 +159,7 @@ List<ProfileRecord> _records(DateTime now) => [
       ),
       ProfileRecord(
         id: 'demo-exp-0001',
-        category: RecordCategory.experience,
+        categorySlug: 'experience',
         title: '后端开发工程师',
         organization: '示例科技有限公司',
         role: '后端开发工程师',
@@ -180,7 +179,7 @@ List<ProfileRecord> _records(DateTime now) => [
       ),
       ProfileRecord(
         id: 'demo-prj-0001',
-        category: RecordCategory.projects,
+        categorySlug: 'projects',
         title: 'Lifeline 个人资料管理',
         role: '独立开发',
         startDate: '2024-01',
@@ -196,7 +195,7 @@ List<ProfileRecord> _records(DateTime now) => [
       ),
       ProfileRecord(
         id: 'demo-award-0001',
-        category: RecordCategory.awards,
+        categorySlug: 'awards',
         title: '全国大学生软件设计大赛 一等奖',
         organization: '教育部',
         startDate: '2021-10',
@@ -208,7 +207,7 @@ List<ProfileRecord> _records(DateTime now) => [
       ),
       ProfileRecord(
         id: 'demo-skill-0001',
-        category: RecordCategory.skills,
+        categorySlug: 'skills',
         title: '后端与云原生技术栈',
         highlights: const [
           '语言：Go / Java / Python / SQL',

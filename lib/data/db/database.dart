@@ -163,7 +163,7 @@ class LifelineDatabase extends _$LifelineDatabase implements RecordIndex {
 
   RecordsCompanion _companion(ProfileRecord r) => RecordsCompanion.insert(
         id: r.id,
-        category: r.category.slug,
+        category: r.categorySlug,
         title: r.title,
         organization: Value(r.organization),
         role: Value(r.role),

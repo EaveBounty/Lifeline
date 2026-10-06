@@ -17,7 +17,7 @@ import '../secrets/secret_store.dart';
 import 'llm_client.dart';
 import 'prompts.dart';
 
-/// 自动录入的可编辑草稿。
+/// AI 自动录入草稿。
 ///
 /// 字段可变，便于 UI 直接微调后 [toRecord] 落库。
 class EntryDraft {
@@ -39,7 +39,8 @@ class EntryDraft {
     this.rawInput,
   });
 
-  RecordCategory category;
+  /// 分类 slug（用户可编辑的分类之一；未知时回退到首个分类）。
+  String category;
   String title;
   String? organization;
   String? role;
@@ -60,14 +61,19 @@ class EntryDraft {
   String? rawInput;
 
   /// 从模型 JSON 构造；schema 不合法时抛 [FormatException]。
-  factory EntryDraft.fromJson(Map<String, dynamic> j) {
-    final slug = _str(j['category']);
-    final category = RecordCategory.fromSlug(slug);
-    if (category == null) {
-      throw FormatException('未知分类 "$slug"');
+  ///
+  /// [allowedSlugs] 为当前用户分类集；[fallbackSlug] 用于未知/缺失分类。
+  factory EntryDraft.fromJson(
+    Map<String, dynamic> j, {
+    Set<String>? allowedSlugs,
+    String fallbackSlug = kFallbackCategorySlug,
+  }) {
+    var slug = _str(j['category']);
+    if (slug.isEmpty || (allowedSlugs != null && !allowedSlugs.contains(slug))) {
+      slug = fallbackSlug;
     }
     return EntryDraft(
-      category: category,
+      category: slug,
       title: _str(j['title']),
       organization: _nullStr(j['organization']),
       role: _nullStr(j['role']),
@@ -88,7 +94,7 @@ class EntryDraft {
     final now = DateTime.now();
     return ProfileRecord(
       id: id,
-      category: category,
+      categorySlug: category,
       title: title,
       organization: organization,
       role: role,
@@ -144,7 +150,7 @@ class AiService {
       if (hasImage) LlmContent.image(imagePath),
     ];
     final messages = <LlmMessage>[
-      LlmMessage.text('system', entrySystemPrompt),
+      LlmMessage.text('system', entrySystemPrompt(settings.categories)),
       LlmMessage('user', contents),
     ];
 
@@ -166,7 +172,13 @@ class AiService {
       if (map == null) {
         return const Err('模型未返回合法的 JSON 记录。');
       }
-      final draft = EntryDraft.fromJson(map)
+      final draft = EntryDraft.fromJson(
+        map,
+        allowedSlugs: settings.categories.map((c) => c.slug).toSet(),
+        fallbackSlug: settings.categories.isEmpty
+            ? kFallbackCategorySlug
+            : settings.categories.first.slug,
+      )
         ..model = provider.model
         ..rawInput = trimmed.isEmpty ? null : trimmed;
       return Ok(draft);

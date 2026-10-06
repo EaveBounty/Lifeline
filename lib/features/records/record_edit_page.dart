@@ -20,7 +20,7 @@ class RecordEditPage extends ConsumerStatefulWidget {
   const RecordEditPage({super.key, this.recordId, this.initialCategory});
 
   final String? recordId;
-  final RecordCategory? initialCategory;
+  final String? initialCategory;
 
   @override
   ConsumerState<RecordEditPage> createState() => _RecordEditPageState();
@@ -68,7 +68,7 @@ class _RecordEditPageState extends ConsumerState<RecordEditPage> {
   final TextEditingController _description = TextEditingController();
   final TextEditingController _tagCtrl = TextEditingController();
 
-  late RecordCategory _category;
+  String? _category;
   final List<TextEditingController> _highlights = [];
   final List<String> _tags = [];
   final List<_KvRow> _fields = [];
@@ -83,7 +83,7 @@ class _RecordEditPageState extends ConsumerState<RecordEditPage> {
   @override
   void initState() {
     super.initState();
-    _category = widget.initialCategory ?? RecordCategory.education;
+    _category = widget.initialCategory;
     if (widget.recordId == null) {
       _highlights.add(TextEditingController());
     }
@@ -126,7 +126,7 @@ class _RecordEditPageState extends ConsumerState<RecordEditPage> {
   }
 
   void _apply(ProfileRecord r) {
-    _category = r.category;
+    _category = r.categorySlug;
     _title.text = r.title;
     _organization.text = r.organization ?? '';
     _role.text = r.role ?? '';
@@ -217,31 +217,56 @@ class _RecordEditPageState extends ConsumerState<RecordEditPage> {
   // --- 各分区 ---
 
   Widget _basicSection() {
+    final categories = ref.watch(categoriesProvider);
+    final fallbackSlug =
+        categories.isNotEmpty ? categories.first.slug : kFallbackCategorySlug;
+    final effective = _category ?? fallbackSlug;
+    final items = <CategoryDef>[
+      ...categories,
+      if (!categories.any((c) => c.slug == effective))
+        CategoryDef(slug: effective, label: effective),
+    ];
     return SectionCard(
       title: '基本信息',
       icon: Icons.badge_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DropdownButtonFormField<RecordCategory>(
-            initialValue: _category,
-            decoration: const InputDecoration(labelText: '分类'),
-            items: [
-              for (final c in RecordCategory.values)
-                DropdownMenuItem(
-                  value: c,
-                  child: Row(
-                    children: [
-                      Icon(categoryIcon(c), size: 18),
-                      const SizedBox(width: 8),
-                      Text(c.labelZh),
-                    ],
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  initialValue: effective,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: '分类'),
+                  items: [
+                    for (final c in items)
+                      DropdownMenuItem(
+                        value: c.slug,
+                        child: Row(
+                          children: [
+                            Icon(categoryIcon(c.icon), size: 18),
+                            const SizedBox(width: 8),
+                            Flexible(
+                                child: Text(c.label,
+                                    overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      ),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setState(() => _category = v);
+                  },
                 ),
+              ),
+              IconButton(
+                tooltip: '管理分类',
+                icon: const Icon(Icons.tune),
+                onPressed: () =>
+                    context.push('/settings/categories'),
+              ),
             ],
-            onChanged: (v) {
-              if (v != null) setState(() => _category = v);
-            },
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -620,9 +645,12 @@ class _RecordEditPageState extends ConsumerState<RecordEditPage> {
       final now = DateTime.now();
       final id = widget.recordId ?? const Uuid().v4();
       final base = _origin;
+      final categories = ref.read(categoriesProvider);
+      final fallbackSlug =
+          categories.isNotEmpty ? categories.first.slug : kFallbackCategorySlug;
       final record = ProfileRecord(
         id: id,
-        category: _category,
+        categorySlug: _category ?? fallbackSlug,
         title: _title.text.trim(),
         organization: _nullIfEmpty(_organization.text),
         role: _nullIfEmpty(_role.text),

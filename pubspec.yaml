@@ -2,7 +2,7 @@ name: lifeline
 description: "Lifeline · 履痕 — 个人资料管理软件（数据/配置外部挂载，AI 自动编译简历）。"
 publish_to: 'none'
 
-version: 0.4.1+5
+version: 0.4.2+6
 
 environment:
   sdk: ^3.12.2

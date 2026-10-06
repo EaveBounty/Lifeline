@@ -2,6 +2,7 @@
 library;
 
 import 'ai_provider.dart';
+import 'record_category.dart';
 
 class AppSettings {
   final int schemaVersion;
@@ -10,6 +11,9 @@ class AppSettings {
   final List<String> defaultExportFormats; // pdf, docx, md
   final String? defaultAiProviderId;
   final List<AiProvider> providers;
+
+  /// 用户可编辑的信息分类集（开放分类）。
+  final List<CategoryDef> categories;
   final bool researchEnabled;
   final bool autoCompileEnabled;
   final int watchDebounceMs;
@@ -22,6 +26,7 @@ class AppSettings {
     this.defaultExportFormats = const ['pdf', 'docx', 'md'],
     this.defaultAiProviderId,
     this.providers = const [],
+    this.categories = kDefaultCategories,
     this.researchEnabled = true,
     this.autoCompileEnabled = true,
     this.watchDebounceMs = 600,
@@ -35,6 +40,7 @@ class AppSettings {
     List<String>? defaultExportFormats,
     String? defaultAiProviderId,
     List<AiProvider>? providers,
+    List<CategoryDef>? categories,
     bool? researchEnabled,
     bool? autoCompileEnabled,
     int? watchDebounceMs,
@@ -47,6 +53,7 @@ class AppSettings {
         defaultExportFormats: defaultExportFormats ?? this.defaultExportFormats,
         defaultAiProviderId: defaultAiProviderId ?? this.defaultAiProviderId,
         providers: providers ?? this.providers,
+        categories: categories ?? this.categories,
         researchEnabled: researchEnabled ?? this.researchEnabled,
         autoCompileEnabled: autoCompileEnabled ?? this.autoCompileEnabled,
         watchDebounceMs: watchDebounceMs ?? this.watchDebounceMs,
@@ -63,6 +70,7 @@ class AppSettings {
           'default_provider_id': defaultAiProviderId,
           'providers': providers.map((p) => p.toJson()).toList(),
         },
+        'categories': categories.map((c) => c.toJson()).toList(),
         'export': {
           'default_formats': defaultExportFormats,
         },
@@ -80,6 +88,12 @@ class AppSettings {
     final export = (j['export'] as Map?)?.cast<String, dynamic>() ?? {};
     final compile = (j['compile'] as Map?)?.cast<String, dynamic>() ?? {};
     final research = (j['research'] as Map?)?.cast<String, dynamic>() ?? {};
+    final catsRaw = j['categories'];
+    final categories = (catsRaw is List && catsRaw.isNotEmpty)
+        ? catsRaw
+            .map((e) => CategoryDef.fromJson((e as Map).cast<String, dynamic>()))
+            .toList()
+        : kDefaultCategories;
     return AppSettings(
       schemaVersion: (j['schema_version'] as num?)?.toInt() ?? 1,
       language: (app['language'] ?? 'zh') as String,
@@ -91,6 +105,7 @@ class AppSettings {
               ?.map((e) => AiProvider.fromJson((e as Map).cast<String, dynamic>()))
               .toList() ??
           const [],
+      categories: categories,
       researchEnabled: (research['enabled'] ?? true) as bool,
       autoCompileEnabled: (compile['auto_enabled'] ?? true) as bool,
       watchDebounceMs: (compile['watch_debounce_ms'] as num?)?.toInt() ?? 600,

@@ -78,7 +78,7 @@ class RootManager {
       final root = p.normalize(dir.absolute.path);
       _rootPath = root;
 
-      for (final c in RecordCategory.values) {
+      for (final c in kDefaultCategories) {
         await ensureDir(p.join(_recordsDir, c.slug));
       }
       await ensureDir(_resumesDir);
@@ -127,10 +127,9 @@ class RootManager {
         return const Err<void>('目录尚未初始化，请先初始化');
       }
       _rootPath = p.normalize(Directory(path).absolute.path);
-      // 补齐可能缺失的数据目录（非破坏）。
-      for (final c in RecordCategory.values) {
-        await ensureDir(p.join(_recordsDir, c.slug));
-      }
+      // 补齐可能缺失的数据目录（非破坏）。分类目录按需在实际写入时创建，
+      // 以免把用户已删除的分类重新“复活”。
+      await ensureDir(_recordsDir);
       await ensureDir(_resumesDir);
       await ensureDir(_attachmentsDir);
       await _config.setSyncRoot(_rootPath);
@@ -156,8 +155,6 @@ class RootManager {
   File get profileFile => File(p.join(_dataDir, SyncLayout.profileFile));
 
   /// 必填子目录路径（供仓库层复用）。
-  String recordDir(RecordCategory category) =>
-      p.join(_recordsDir, category.slug);
   String get resumesDir => _resumesDir;
   String get attachmentsDir => _attachmentsDir;
 }

@@ -21,7 +21,7 @@ class MemoryRecordIndex implements RecordIndex {
   Future<List<ProfileRecord>> allRecords() async {
     final list = _records.values.toList()
       ..sort((a, b) {
-        final c = a.category.index.compareTo(b.category.index);
+        final c = a.categorySlug.compareTo(b.categorySlug);
         if (c != 0) return c;
         return a.order.compareTo(b.order);
       });

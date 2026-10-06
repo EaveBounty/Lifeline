@@ -179,12 +179,13 @@ lifeline/
 ## 6. 数据格式简述
 
 - **真相源**：`profile.json`、`data/records/**/*.json`、`data/resumes/**/meta.json|spec.json`、`lifeline.yaml`、`.lifeline/state.json`。
-- **Record**：`category`（education/experience/projects/awards/publications/certificates/skills/…）、`title`、`organization`、`role`、`start_date`/`end_date`、`description`(Markdown)、`highlights[]`(STAR 量化)、`tags[]`、`fields{}`(分类专属键值)、`attachments[]`(相对路径)、`links[]`、`source{}`、`ai{}`、`created_at/updated_at`、`status`、`order`。
+- **Record**：`category`（自由分类 slug，默认集含 education/experience/projects/awards/publications/certificates/skills/…，用户可增改删）、`title`、`organization`、`role`、`start_date`/`end_date`、`description`(Markdown)、`highlights[]`(STAR 量化)、`tags[]`、`fields{}`(分类专属键值)、`attachments[]`(相对路径)、`links[]`、`source{}`、`ai{}`、`created_at/updated_at`、`status`、`order`。
+- **分类（开放）**：分类不写死，存于 `lifeline.yaml` 的 `categories:`（slug/label/icon/order），可在「设置 → 信息分类」或记录页入口新增/重命名/换图标/排序/删除；删除时可把记录迁移到目标分类，绝不丢数据；未登记的遗留分类仍可正常显示与编译。
 - **附件**：文件本身 + 记录内相对路径数组为真相源；SQLite `attachments` 表仅为可重建索引。
 - **写入**：一律**先写临时文件再原子 rename**；冲突时保留 `.conflict` 副本，绝不静默覆盖。
 - **索引**：`drift` 在启动与文件变更时增量重建；索引库位于 App 私有目录（按同步根哈希分文件），删除后可由 JSON **100% 重建**。
 
-> 权威 schema、分类枚举、迁移与冲突细则见 [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md)（与 `ARCHITECTURE.md` §4 对齐）。
+> 权威 schema、分类与迁移与冲突细则见 [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md)（与 `ARCHITECTURE.md` §4 对齐）。
 
 ---
 
@@ -378,3 +379,4 @@ DOCX / Markdown 接受模板参数（DOCX 保持单列 ATS，可选「modern」�
 - 2026-10-07 新增**加密密钥保险库**（可同步）：`lib/services/secrets/`（`crypto_vault.dart` 纯逻辑信封加密、`vault_store.dart` IO/解锁态、`secret_store.dart` 门面、`vault_providers.dart` 控制器）；API Key 经口令 + PBKDF2-HMAC-SHA256(210000) + AES-256-GCM（wrapped DEK + 数据两段）加密后写入 `<SyncRoot>/.lifeline/vault.dat`，外层 `LFV1` 换行 base64 仅作混淆（明确「混淆≠安全」）；多设备同口令解锁、设备 DEK 缓存自动解锁、迁移旧密钥、设置页入口 `/settings/vault`；新增 `test/crypto_vault_test.dart`（6 例）。
 - 2026-10-07 密钥保险库安全加固（v0.4.0，经独立安全审查）：锁定态 `read/readAll` **不再回退旧后端**（防绕过锁定）；`write/delete` 锁定态抛受控错误；`migrateFromLocal` 默认删除旧源键；crypto 层拒绝空/短口令（<8）；解锁按信封 `iters` 派生（支持 KDF 升级）；`rewrap` 改为**真最小重包**（仅重包 DEK，数据密文不变）；`forgetDevice` 诚实返回成败；`ai_settings` 锁定时引导解锁。测试增至 72。
 - 2026-10-07 移动端修复（v0.4.1）：索引库移至 App 私有目录（修复 Android `SqliteException(14)`）、存储权限声明+运行时申请（修复移动端选不了文件夹）、附件预览支持 PDF 内嵌/文本/系统应用打开、首页简历条目可点击跳转记录详情；`compileSdk 37`；新增 `permission_handler`、`open_filex`。
+- 2026-10-07 开放分类（v0.4.2）：分类不再固定 15 大类，用户可新增/重命名/换图标/排序/删除（存 `lifeline.yaml` 的 `categories:`）；删除或改 slug 时可将记录迁移到目标分类、绝不丢数据；编辑/详情/列表/AI 归类/简历编译全部按用户分类动态生成，未登记分类亦可读取编译。`RecordCategory` 枚举 → `CategoryDef` + `categorySlug`；记录仓库改为遍历磁盘实际分类目录。

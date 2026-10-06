@@ -26,6 +26,7 @@ import 'models/attachment.dart';
 import 'models/export_request.dart';
 import 'models/profile.dart';
 import 'models/profile_record.dart';
+import 'models/record_category.dart';
 import 'models/resume_doc.dart';
 import 'repositories/attachment_repository.dart';
 import 'repositories/profile_repository.dart';
@@ -212,13 +213,56 @@ class SettingsController extends AsyncNotifier<AppSettings> {
       defaultExportFormats: current.defaultExportFormats,
       defaultAiProviderId: id,
       providers: current.providers,
+      categories: current.categories,
       researchEnabled: current.researchEnabled,
       autoCompileEnabled: current.autoCompileEnabled,
       watchDebounceMs: current.watchDebounceMs,
       extra: current.extra,
     ));
   }
+
+  // --- 分类（开放、可编辑）---
+
+  Future<void> addCategory(CategoryDef def) async {
+    final current = state.value ?? AppSettings.initial();
+    final list = [...current.categories];
+    if (list.any((c) => c.slug == def.slug)) return;
+    list.add(def);
+    await save(current.copyWith(categories: _renumber(list)));
+  }
+
+  Future<void> updateCategory(CategoryDef def) async {
+    final current = state.value ?? AppSettings.initial();
+    final list = [
+      for (final c in current.categories) if (c.slug == def.slug) def else c,
+    ];
+    await save(current.copyWith(categories: sortedCategories(_renumber(list))));
+  }
+
+  Future<void> removeCategory(String slug) async {
+    final current = state.value ?? AppSettings.initial();
+    if (current.categories.length <= 1) return;
+    final list = current.categories.where((c) => c.slug != slug).toList();
+    await save(current.copyWith(categories: _renumber(list)));
+  }
+
+  /// 持久化用户拖拽后的顺序（按传入顺序写 order）。
+  Future<void> reorderCategories(List<CategoryDef> ordered) async {
+    final current = state.value ?? AppSettings.initial();
+    await save(current.copyWith(categories: _renumber(ordered)));
+  }
+
+  List<CategoryDef> _renumber(List<CategoryDef> list) => [
+        for (var i = 0; i < list.length; i++) list[i].copyWith(order: i),
+      ];
 }
+
+/// 当前生效的分类（按 order 排序）；无设置时回退默认集。
+final categoriesProvider = Provider<List<CategoryDef>>((ref) {
+  final s = ref.watch(settingsProvider).value;
+  final list = s?.categories ?? kDefaultCategories;
+  return sortedCategories(list.isEmpty ? kDefaultCategories : list);
+});
 
 // --- Profile ---
 
@@ -290,6 +334,15 @@ class RecordsController extends AsyncNotifier<List<ProfileRecord>> {
   Future<void> importAll(List<ProfileRecord> records) =>
       _mutate((r) => r.importAll(records));
   Future<void> rebuildIndex() => _mutate((r) => r.rebuildIndex());
+
+  /// 删除分类前，将该分类下的记录迁移到 [toSlug]，返回迁移数。
+  Future<int> moveCategory(String fromSlug, String toSlug) async {
+    final repo = _repo();
+    if (repo == null) return 0;
+    final n = await repo.moveCategory(fromSlug, toSlug);
+    state = AsyncData(await repo.loadAll());
+    return n;
+  }
 
   Future<void> _mutate(Future<void> Function(RecordsRepository) op) async {
     final repo = _repo();
@@ -403,6 +456,11 @@ final fullResumeProvider = Provider<ResumeDocument?>((ref) {
   // B2：编译语言接 settings.language（zh|en）。
   final language =
       ref.watch(settingsProvider.select((s) => s.value?.language ?? 'zh'));
-  return const ResumeCompiler()
-      .compile(profile: profile, records: records, language: language);
+  final categories = ref.watch(categoriesProvider);
+  return const ResumeCompiler().compile(
+    profile: profile,
+    records: records,
+    language: language,
+    categories: categories,
+  );
 });

@@ -44,6 +44,11 @@ class RecordsPage extends ConsumerWidget {
             icon: const Icon(Icons.attach_file),
             onPressed: () => context.push('/attachments'),
           ),
+          IconButton(
+            tooltip: '管理分类',
+            icon: const Icon(Icons.category_outlined),
+            onPressed: () => context.push('/settings/categories'),
+          ),
           const SizedBox(width: 4),
         ],
       ),
@@ -144,7 +149,7 @@ class _RecordsBody extends ConsumerStatefulWidget {
 class _RecordsBodyState extends ConsumerState<_RecordsBody> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _query = '';
-  RecordCategory? _filter;
+  String? _filter;
 
   @override
   void dispose() {
@@ -171,25 +176,36 @@ class _RecordsBodyState extends ConsumerState<_RecordsBody> {
         error: e,
         onRetry: () => ref.invalidate(recordsProvider),
       ),
-      data: (all) {
-        final present = <RecordCategory>{
-          for (final r in all) r.category,
+        data: (all) {
+        final categories = ref.watch(categoriesProvider);
+        final present = <String>{
+          for (final r in all) r.categorySlug,
         }.toList()
-          ..sort((a, b) => a.index.compareTo(b.index));
+          ..sort((a, b) {
+            final c = resolveCategory(categories, a)
+                .order
+                .compareTo(resolveCategory(categories, b).order);
+            return c != 0 ? c : a.compareTo(b);
+          });
 
         final query = _query.trim();
         final filtered = all
             .where((r) =>
-                (_filter == null || r.category == _filter) &&
+                (_filter == null || r.categorySlug == _filter) &&
                 _match(r, query))
             .toList();
 
-        final grouped = <RecordCategory, List<ProfileRecord>>{};
+        final grouped = <String, List<ProfileRecord>>{};
         for (final r in filtered) {
-          grouped.putIfAbsent(r.category, () => []).add(r);
+          grouped.putIfAbsent(r.categorySlug, () => []).add(r);
         }
         final cats = grouped.keys.toList()
-          ..sort((a, b) => a.index.compareTo(b.index));
+          ..sort((a, b) {
+            final c = resolveCategory(categories, a)
+                .order
+                .compareTo(resolveCategory(categories, b).order);
+            return c != 0 ? c : a.compareTo(b);
+          });
 
         return Center(
           child: ConstrainedBox(
@@ -197,7 +213,7 @@ class _RecordsBodyState extends ConsumerState<_RecordsBody> {
             child: Column(
               children: [
                 _searchBar(),
-                if (all.isNotEmpty) _filterChips(present),
+                if (all.isNotEmpty) _filterChips(present, categories),
                 Expanded(
                   child: filtered.isEmpty
                       ? EmptyState(
@@ -219,10 +235,14 @@ class _RecordsBodyState extends ConsumerState<_RecordsBody> {
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
                           children: [
                             for (final cat in cats) ...[
-                              _groupHeader(context, cat, grouped[cat]!.length),
+                              _groupHeader(
+                                  context,
+                                  resolveCategory(categories, cat),
+                                  grouped[cat]!.length),
                               for (final r in grouped[cat]!)
                                 _RecordTile(
                                   record: r,
+                                  categories: categories,
                                   onTap: () =>
                                       context.push('/records/${r.id}'),
                                 ),
@@ -262,7 +282,7 @@ class _RecordsBodyState extends ConsumerState<_RecordsBody> {
     );
   }
 
-  Widget _filterChips(List<RecordCategory> present) {
+  Widget _filterChips(List<String> present, List<CategoryDef> categories) {
     return SizedBox(
       height: 46,
       child: ListView(
@@ -277,14 +297,16 @@ class _RecordsBodyState extends ConsumerState<_RecordsBody> {
               onSelected: (_) => setState(() => _filter = null),
             ),
           ),
-          for (final c in present)
+          for (final slug in present)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
-                avatar: Icon(categoryIcon(c), size: 16),
-                label: Text(c.labelZh),
-                selected: _filter == c,
-                onSelected: (_) => setState(() => _filter = c),
+                avatar: Icon(
+                    categoryIcon(resolveCategory(categories, slug).icon),
+                    size: 16),
+                label: Text(resolveCategory(categories, slug).label),
+                selected: _filter == slug,
+                onSelected: (_) => setState(() => _filter = slug),
               ),
             ),
         ],
@@ -292,15 +314,16 @@ class _RecordsBodyState extends ConsumerState<_RecordsBody> {
     );
   }
 
-  Widget _groupHeader(BuildContext context, RecordCategory cat, int count) {
+  Widget _groupHeader(BuildContext context, CategoryDef cat, int count) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
       child: Row(
         children: [
-          Icon(categoryIcon(cat), size: 18, color: theme.colorScheme.primary),
+          Icon(categoryIcon(cat.icon),
+              size: 18, color: theme.colorScheme.primary),
           const SizedBox(width: 8),
-          Text(cat.labelZh, style: theme.textTheme.titleSmall),
+          Text(cat.label, style: theme.textTheme.titleSmall),
           const SizedBox(width: 8),
           Text('$count',
               style: theme.textTheme.labelSmall
@@ -312,15 +335,21 @@ class _RecordsBodyState extends ConsumerState<_RecordsBody> {
 }
 
 class _RecordTile extends StatelessWidget {
-  const _RecordTile({required this.record, required this.onTap});
+  const _RecordTile({
+    required this.record,
+    required this.categories,
+    required this.onTap,
+  });
 
   final ProfileRecord record;
+  final List<CategoryDef> categories;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final date = formatDateRange(record.startDate, record.endDate);
+    final def = resolveCategory(categories, record.categorySlug);
     final subtitle = <String>[
       if ((record.organization ?? '').trim().isNotEmpty)
         record.organization!.trim(),
@@ -338,7 +367,7 @@ class _RecordTile extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 20,
-                child: Icon(categoryIcon(record.category), size: 20),
+                child: Icon(categoryIcon(def.icon), size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(

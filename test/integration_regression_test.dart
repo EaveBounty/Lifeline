@@ -9,7 +9,6 @@ import 'package:lifeline/data/db/database.dart';
 import 'package:lifeline/data/models/ai_provider.dart';
 import 'package:lifeline/data/models/profile.dart';
 import 'package:lifeline/data/models/profile_record.dart';
-import 'package:lifeline/data/models/record_category.dart';
 import 'package:lifeline/data/repositories/attachment_repository.dart';
 import 'package:lifeline/data/repositories/records_repository.dart';
 import 'package:lifeline/data/repositories/resume_repository.dart';
@@ -73,7 +72,7 @@ void main() {
       const id = '11111111-1111-1111-1111-111111111111';
       final record = ProfileRecord(
         id: id,
-        category: RecordCategory.certificates,
+        categorySlug: 'certificates',
         title: '证书',
         attachments: const [recRel],
         createdAt: DateTime.now(),
@@ -116,7 +115,7 @@ void main() {
 
       var record = ProfileRecord(
         id: id,
-        category: RecordCategory.custom,
+        categorySlug: 'custom',
         title: 'AI 条目',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -161,7 +160,7 @@ void main() {
       final db = await memoryDb();
       final bad = ProfileRecord(
         id: '../../evil',
-        category: RecordCategory.education,
+        categorySlug: 'education',
         title: 'x',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -183,14 +182,14 @@ void main() {
       const goodId = '33333333-3333-3333-3333-333333333333';
       final good = ProfileRecord(
         id: goodId,
-        category: RecordCategory.education,
+        categorySlug: 'education',
         title: '好记录',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
       final bad = ProfileRecord(
         id: '../../evil',
-        category: RecordCategory.education,
+        categorySlug: 'education',
         title: '坏记录',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -213,7 +212,7 @@ void main() {
     test('language=en 输出英文章节名', () {
       final record = ProfileRecord(
         id: 'x',
-        category: RecordCategory.experience,
+        categorySlug: 'experience',
         title: 'Engineer',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -222,8 +221,8 @@ void main() {
           .compile(profile: Profile.empty(), records: [record], language: 'en');
       final zh = const ResumeCompiler()
           .compile(profile: Profile.empty(), records: [record], language: 'zh');
-      expect(en.sections.single.title, RecordCategory.experience.slug);
-      expect(zh.sections.single.title, RecordCategory.experience.labelZh);
+      expect(en.sections.single.title, 'experience');
+      expect(zh.sections.single.title, '工作/实习经历');
     });
   });
 

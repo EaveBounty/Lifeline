@@ -51,7 +51,9 @@ class ProfileRecord {
   /// schema 版本（B5）。
   final int schemaVersion;
   final String id;
-  final RecordCategory category;
+
+  /// 分类 slug（对应 `lifeline.yaml` 中用户可编辑的分类定义）。
+  final String categorySlug;
   final String title;
   final String? organization;
   final String? role;
@@ -86,7 +88,7 @@ class ProfileRecord {
   const ProfileRecord({
     this.schemaVersion = 1,
     required this.id,
-    required this.category,
+    required this.categorySlug,
     required this.title,
     this.organization,
     this.role,
@@ -126,12 +128,12 @@ class ProfileRecord {
     DateTime? updatedAt,
     String? status,
     int? order,
-    RecordCategory? category,
+    String? categorySlug,
   }) {
     return ProfileRecord(
       schemaVersion: schemaVersion ?? this.schemaVersion,
       id: id,
-      category: category ?? this.category,
+      categorySlug: categorySlug ?? this.categorySlug,
       title: title ?? this.title,
       organization: organization ?? this.organization,
       role: role ?? this.role,
@@ -156,7 +158,7 @@ class ProfileRecord {
   Map<String, dynamic> toJson() => {
         'schema_version': schemaVersion,
         'id': id,
-        'category': category.slug,
+        'category': categorySlug,
         'title': title,
         'organization': organization,
         'role': role,
@@ -178,10 +180,13 @@ class ProfileRecord {
       };
 
   factory ProfileRecord.fromJson(Map<String, dynamic> j) {
+    final rawCategory = '${j['category'] ?? ''}'.trim();
     return ProfileRecord(
       schemaVersion: (j['schema_version'] as num?)?.toInt() ?? 1,
       id: j['id'] as String,
-      category: RecordCategory.fromSlug(j['category'] as String?) ?? RecordCategory.custom,
+      categorySlug: rawCategory.isEmpty
+          ? kFallbackCategorySlug
+          : sanitizeSlug(rawCategory),
       title: (j['title'] ?? '') as String,
       organization: j['organization'] as String?,
       role: j['role'] as String?,

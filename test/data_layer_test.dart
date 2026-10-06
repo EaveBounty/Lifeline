@@ -21,7 +21,7 @@ void main() {
       final now = DateTime.parse('2026-01-02T03:04:05.000');
       final record = ProfileRecord(
         id: 'r1',
-        category: RecordCategory.education,
+        categorySlug: 'education',
         title: '某大学',
         organization: '某大学',
         role: '学生',
@@ -41,7 +41,7 @@ void main() {
 
       final decoded = ProfileRecord.fromJson(record.toJson());
       expect(decoded.id, record.id);
-      expect(decoded.category, RecordCategory.education);
+      expect(decoded.categorySlug, 'education');
       expect(decoded.title, record.title);
       expect(decoded.organization, record.organization);
       expect(decoded.startDate, '2020-09');
@@ -105,7 +105,7 @@ void main() {
         Directory(p.join(dir.path, 'data', 'resumes')).existsSync(),
         isTrue,
       );
-      for (final c in RecordCategory.values) {
+      for (final c in kDefaultCategories) {
         expect(
           Directory(p.join(dir.path, 'data', 'records', c.slug)).existsSync(),
           isTrue,
@@ -141,7 +141,7 @@ void main() {
       final records = [
         ProfileRecord(
           id: 'x',
-          category: RecordCategory.experience,
+          categorySlug: 'experience',
           title: '工程师',
           organization: 'ACME',
           role: '后端',
@@ -152,7 +152,7 @@ void main() {
         ),
         ProfileRecord(
           id: 'y',
-          category: RecordCategory.experience,
+          categorySlug: 'experience',
           title: '归档项',
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),

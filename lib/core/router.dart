@@ -16,6 +16,7 @@ import '../features/records/record_detail_page.dart';
 import '../features/records/record_edit_page.dart';
 import '../features/records/records_page.dart';
 import '../features/settings/ai_settings_page.dart';
+import '../features/settings/categories_page.dart';
 import '../features/settings/secret_vault_page.dart';
 import '../features/settings/settings_page.dart';
 
@@ -39,6 +40,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/attachments', builder: (_, __) => const AttachmentsPage()),
     GoRoute(path: '/settings', builder: (_, __) => const SettingsPage()),
     GoRoute(path: '/settings/ai', builder: (_, __) => const AiSettingsPage()),
+    GoRoute(
+      path: '/settings/categories',
+      builder: (_, __) => const CategoriesPage(),
+    ),
     GoRoute(
       path: '/settings/vault',
       builder: (_, __) => const SecretVaultPage(),

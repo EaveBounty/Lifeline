@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/common.dart';
 import '../../data/models/profile_record.dart';
+import '../../data/models/record_category.dart';
 import '../../data/providers.dart';
 import '../attachments/attachment_preview.dart';
 
@@ -63,10 +64,12 @@ class _DetailView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final root = ref.watch(syncRootProvider).path;
+    final categories = ref.watch(categoriesProvider);
+    final def = resolveCategory(categories, record.categorySlug);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(record.category.labelZh),
+        title: Text(def.label),
         actions: [
           IconButton(
             tooltip: '编辑',
@@ -87,7 +90,7 @@ class _DetailView extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
-              _headerCard(theme),
+              _headerCard(theme, def),
               const SizedBox(height: 12),
               if (record.description.trim().isNotEmpty)
                 _section(
@@ -194,7 +197,7 @@ class _DetailView extends ConsumerWidget {
     );
   }
 
-  Widget _headerCard(ThemeData theme) {
+  Widget _headerCard(ThemeData theme, CategoryDef def) {
     final date = formatDateRange(record.startDate, record.endDate);
     final subtitle = <String>[
       if ((record.organization ?? '').trim().isNotEmpty)
@@ -203,7 +206,7 @@ class _DetailView extends ConsumerWidget {
     ].join(' · ');
     return SectionCard(
       title: record.title.isEmpty ? '（无标题）' : record.title,
-      icon: categoryIcon(record.category),
+      icon: categoryIcon(def.icon),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

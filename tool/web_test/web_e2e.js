@@ -263,7 +263,7 @@ async function main() {
 
   // 8) 真实交互：首页点击「添加信息」→ 跳转新增记录
   {
-    console.log('[8/8] 交互：点击「添加信息」');
+    console.log('[8/9] 交互：点击「添加信息」');
     const ctx = await newContext(browser, 900);
     const page = await ctx.newPage();
     hookErrors(page, 'interaction');
@@ -289,6 +289,21 @@ async function main() {
     await ctx.close();
   }
 
+  // 9) 分类管理（开放分类）
+  {
+    console.log('[9/9] 分类管理页');
+    const { ctx, page, text } = await openPage(browser, {
+      label: 'categories',
+      query: '?demo=1&r=categories#/settings/categories',
+      height: 900,
+      shot: 'screenshot-categories.png',
+    });
+    assert(text.includes('管理分类'), '出现「管理分类」');
+    assert(text.includes('教育经历'), '出现默认分类「教育经历」');
+    assert(text.includes('新增'), '出现「新增」入口');
+    await ctx.close();
+  }
+
   await browser.close();
 
   // 汇总
@@ -307,6 +322,7 @@ async function main() {
     'screenshot-export.png',
     'screenshot-resumes.png',
     'screenshot-eval.png',
+    'screenshot-categories.png',
   ];
   console.log('\n截图产物：');
   for (const s of shots) {
@@ -320,7 +336,7 @@ async function main() {
     console.log(`\nFAIL：${failures.length} 项未通过`);
     process.exit(1);
   }
-  console.log('\nPASS：全部断言通过，0 浏览器错误，7 张截图已生成。');
+  console.log('\nPASS：全部断言通过，0 浏览器错误，8 张截图已生成。');
 }
 
 main().catch((e) => {
