@@ -1,6 +1,10 @@
-# Lifeline · 履痕
+# 履痕（Lifeline）
+
+<p align="center"><img src="docs/assets/icon.png" width="112" alt="履痕 图标"></p>
 
 > 跨平台（Android / Windows / Linux / Web）个人资料管理软件：把散落的个人经历沉淀为**可挂载、可 diff、可被任意工具同步的纯文本文件夹**，聚合成一份**不断自动编译的完整简历**，并支持 AI 自动录入、按岗位定向导出（多模板 Typst→PDF / DOCX / Markdown）与简历评估。
+
+- **显示名**：履痕　｜　**英文标识 / 仓库**：`Lifeline`　｜　**包名**：`com.eavebounty.lifeline`
 
 仓库：`EaveBounty/Lifeline` ｜ 许可：**PolyForm Noncommercial License 1.0.0**
 版权：**长沙市果垂素宇工程设计有限公司**
@@ -60,8 +64,8 @@
 | AI 自动录入 | 文本 / 图片（vision）→ 严格 JSON → 人工确认落库 |
 | 自动编译 | 文件监听 + 轮询兜底 + debounce，变更即重编译 |
 | 按岗位定向导出 | 岗位调研 → 裁剪策略 → 生成 `spec.json` → 多模板渲染 → 归档简历管理 |
-| 导出模板 | 10 套风格（ATS 单列 / 现代双栏 / 学术 CV / 应届生 / 教师 / 创意 / 商务 / 技术紧凑 / 优雅衬线 / 极简），按目标岗位智能推荐；桌面 Typst 精品、全平台 DartPdf 兜底、DOCX/Markdown |
-| 简历评估（一体两面） | ① **岗位适配诊断**：对照岗位能力画像与硬性要求找缺漏（教师缺教资、算法缺竞赛…），给出**按边际效益排序**的提升行动与资源；② **客观质量评分**：多维打分（启发式离线 / AI）。结果写回 `meta.json` |
+| 导出模板 | 10 套风格（ATS 单列 / 现代双栏 / 学术 CV / 应届生 / 教师 / 创意 / 商务 / 技术紧凑 / 优雅衬线 / 极简），按目标岗位智能推荐，导出向导内**可视化模板预览**；桌面 Typst 精品、全平台 DartPdf 兜底、DOCX/Markdown |
+| 简历评估（一体两面） | ① **岗位适配诊断**：对照 **60 类岗位画像（细分行业 + 职级）** 的硬性要求找缺漏（教师缺教资、算法缺竞赛…），给出**按边际效益排序**的提升行动与资源；② **客观质量评分**：多维打分（启发式离线 / AI）。结果写回 `meta.json` |
 | 密钥安全 | `flutter_secure_storage`，Linux 缺失 keyring 时降级为受权限文件并显式提示 |
 | 离线优先 | 无网络可用；云端能力（LLM/联网调研）均为可选增强 |
 
@@ -366,3 +370,5 @@ DOCX / Markdown 接受模板参数（DOCX 保持单列 ATS，可选「modern」�
 - 2026-10-06 增补 web 版截图（7 张）与浏览器端到端测试：`tool/web_test/`（Playwright 无头 Chromium 跑通 6 路由 + 1 交互，0 console/pageerror，ImageMagick 校验截图非空白）；`lib/dev/demo_seed.dart`（`?demo=1` 注入示例数据）；`main.dart` Web 端启用语义树（`flt-semantics`）供测试定位；`docs/assets/screenshot-*.png` 更新为真实运行截图。
 - 2026-10-06 简历导出多模板：新增 `services/render/templates.dart`（10 套模板 + 岗位推荐 + 章节排序）；`DartPdfRenderer` 实现 5 种版式；`TypstRenderer` 四套模板串；DOCX/Markdown 接受模板参数；`renderersFor` 按模板出候选；`ExportRequest`/`ResumeMeta` 增 `templateId`；导出页模板选择卡片 + 简历库显示模板名；新增 `test/templates_test.dart`。
 - 2026-10-06 评估重构为一体两面（v0.2.0）：`ResumeEvaluation` 拆为 `FitAnalysis`（岗位适配诊断）+ `ObjectiveScore`（客观质量评分），schema v2 兼容 v1；新增岗位画像库 `lib/data/role_profiles.dart`（16 类岗位的硬性证书/技能/典型经历/加分项/行动+资源，如教师教资 NTCE、算法 Kaggle/天池/LeetCode）；启发式按 **边际效益**（gain×effort 权重）排序生成提升行动；评估页分段展示并支持可寻址路由 `/resumes/eval/:id`；`resume_manager_page` 徽章显示 `适配/客观` 双分；`test/resume_eval_test.dart` 扩到 13 例；新增评估截图。
+- 2026-10-06 更名与图标（v0.3.0）：显示名改为「**履痕**」（英文标识/仓库 `Lifeline`、包名 `com.eavebounty.lifeline` 不变）；新增 `tool/gen_icon.py`（Python 绘 SVG + ImageMagick 栅格化），重绘图标并生成 Android mipmap / Windows `.ico` / Web `Icon-*` 与 `favicon`；UI 标题与各平台标签统一为「履痕」。
+- 2026-10-06 岗位画像扩充至 **60 类**（细分行业 + 职级：技术/产品设计/商科/泛商科/文教/医药科学/工程/法律公职/人力行政），`match` 支持中英混合与行业+职级加权；导出向导新增**模板可视化预览**（`lib/features/export/template_preview.dart`，纯自绘缩略图 + 放大预览）；新增真实模型联测脚本 `tool/ai_eval_live_test.dart`（本地 Ollama OpenAI 兼容，端到端跑通 AI 精评）。

@@ -341,7 +341,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _aboutRow('名称', '${AppInfo.nameZh}（${AppInfo.nameEn}）'),
+          _aboutRow('名称', AppInfo.nameZh),
           _aboutRow('版本', _appVersion),
           _aboutRow('许可', _license),
           _aboutRow('版权', AppInfo.authorZh),

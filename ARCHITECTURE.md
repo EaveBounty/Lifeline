@@ -1,4 +1,6 @@
-# Lifeline · 履痕 — 系统架构蓝图 (ARCHITECTURE)
+# 履痕（Lifeline）— 系统架构蓝图 (ARCHITECTURE)
+
+> 显示名 **履痕**；英文标识 / 仓库 `Lifeline`；包名 `com.eavebounty.lifeline`（改名不改包）。
 
 > 个人资料管理软件。Flutter 跨平台（Android / Windows / Linux）。
 > 本文件是**唯一权威蓝图**：目录结构、数据格式、模块边界、编译管线、构建与 CI。

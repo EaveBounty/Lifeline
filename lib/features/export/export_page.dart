@@ -13,6 +13,7 @@ import '../../data/repositories/resume_repository.dart';
 import '../../services/ai/llm_client.dart';
 import '../../services/export/export_service.dart';
 import '../../services/render/templates.dart';
+import 'template_preview.dart';
 
 class ExportPage extends ConsumerStatefulWidget {
   const ExportPage({super.key});
@@ -374,9 +375,11 @@ class _ExportPageState extends ConsumerState<ExportPage> {
     );
   }
 
-  /// 模板选择卡片：下拉 + 说明 + 章节顺序预览。
+  /// 模板选择卡片：横向可滚动的带缩略图卡片 + 说明 + 章节顺序预览。
   Widget _templateCard() {
     final selected = ResumeTemplates.byId(_templateId);
+    // 当前岗位的推荐模板（用于标记与默认预选）。
+    final recId = ResumeTemplates.recommendFor([_role.text]).first.id;
     final full = ref.watch(fullResumeProvider);
     final order = full == null
         ? const <String>[]
@@ -388,32 +391,31 @@ class _ExportPageState extends ConsumerState<ExportPage> {
     return SectionCard(
       title: '模板风格',
       icon: Icons.style_outlined,
+      trailing: TextButton.icon(
+        onPressed: () => showTemplatePreviewDialog(context, selected),
+        icon: const Icon(Icons.zoom_in, size: 18),
+        label: const Text('放大预览'),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DropdownButtonFormField<String>(
-            initialValue: selected.id,
-            decoration: const InputDecoration(
-              labelText: '选择模板',
-              border: OutlineInputBorder(),
+          SizedBox(
+            height: 264,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: ResumeTemplates.all.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final t = ResumeTemplates.all[i];
+                return _templateOption(
+                  t,
+                  isSelected: t.id == selected.id,
+                  isRecommended: t.id == recId,
+                );
+              },
             ),
-            items: [
-              for (final t in ResumeTemplates.all)
-                DropdownMenuItem(
-                  value: t.id,
-                  child: Text('${t.name}  ·  ${t.layout}'),
-                ),
-            ],
-            onChanged: (v) {
-              if (v != null) {
-                setState(() {
-                  _templateId = v;
-                  _templateTouched = true;
-                });
-              }
-            },
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Text(selected.description, style: body),
           const SizedBox(height: 6),
           Text('适配：${selected.bestFor.join(' / ')}', style: body),
@@ -437,6 +439,91 @@ class _ExportPageState extends ConsumerState<ExportPage> {
             Text(order.join('  →  '), style: body),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 单张模板卡片：缩略图 + 名称 + 描述 + bestFor；点击选中并写入模板 id。
+  Widget _templateOption(
+    ResumeTemplate t, {
+    required bool isSelected,
+    required bool isRecommended,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: () => setState(() {
+        _templateId = t.id;
+        _templateTouched = true;
+      }),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 164,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? scheme.primary : scheme.outlineVariant,
+            width: isSelected ? 2 : 1,
+          ),
+          color: isSelected
+              ? scheme.primaryContainer.withValues(alpha: 0.28)
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: TemplatePreview(template: t, width: 108)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    t.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.titleSmall,
+                  ),
+                ),
+                if (isRecommended)
+                  Container(
+                    margin: const EdgeInsets.only(left: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: scheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '推荐',
+                      style: text.labelSmall
+                          ?.copyWith(color: scheme.onTertiaryContainer),
+                    ),
+                  ),
+                if (isSelected)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child:
+                        Icon(Icons.check_circle, size: 16, color: scheme.primary),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              t.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: text.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '适配：${t.bestFor.take(3).join(' / ')}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
       ),
     );
   }

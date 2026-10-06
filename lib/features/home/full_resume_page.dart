@@ -24,7 +24,7 @@ class FullResumePage extends ConsumerWidget {
           children: [
             const Icon(Icons.all_inclusive, size: 22),
             const SizedBox(width: 8),
-            const Text('${AppInfo.nameEn} · ${AppInfo.nameZh}'),
+            const Text(AppInfo.nameZh),
           ],
         ),
         actions: [

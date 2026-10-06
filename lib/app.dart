@@ -38,7 +38,7 @@ class LifelineApp extends ConsumerWidget {
 
     if (!root.hasRoot) {
       return MaterialApp(
-        title: '${AppInfo.nameEn} · ${AppInfo.nameZh}',
+        title: AppInfo.nameZh,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
@@ -50,7 +50,7 @@ class LifelineApp extends ConsumerWidget {
     }
 
     return MaterialApp.router(
-      title: '${AppInfo.nameEn} · ${AppInfo.nameZh}',
+      title: AppInfo.nameZh,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

@@ -9,6 +9,15 @@
 - U0 脚手架；U1 数据层；U2 首启与设置；U3 信息表与附件；U4 首页完整简历；
   U5 编译管线与渲染器；U6 AI 录入/编译；U7 智能导出；U8 同步文档；U9 测试与 CI。
 
+## [0.3.0] - 2026-10-06
+
+### 新增
+- **更名与图标**：显示名改为「履痕」（英文标识 / 仓库 `Lifeline`、包名 `com.eavebounty.lifeline` 不变）；`tool/gen_icon.py`（Python 绘 SVG + ImageMagick 栅格化）重绘图标，生成 Android mipmap / Windows `.ico` / Web 图标与 favicon；UI 与各平台标签统一。
+- **岗位画像扩充至 60 类**：细分行业 + 职级（技术/产品设计/商科/泛商科/文教/医药科学/工程/法律公职/人力行政）；`RoleProfiles.match` 支持中英混合与行业+职级加权。
+- **模板可视化预览**：`lib/features/export/template_preview.dart`（纯自绘缩略图 + 放大预览），导出向导卡片化。
+- **真实模型联测**：`tool/ai_eval_live_test.dart`（本地 Ollama OpenAI 兼容接口端到端跑通 AI 精评）。
+- README 增补图标；web E2E 截图在新名称下重新生成。
+
 ## [0.2.0] - 2026-10-06
 
 ### 新增

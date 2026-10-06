@@ -147,7 +147,7 @@ class _SyncRootSetupPageState extends ConsumerState<SyncRootSetupPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${AppInfo.nameEn} · ${AppInfo.nameZh}',
+                        Text(AppInfo.nameZh,
                             style: theme.textTheme.headlineSmall),
                         Text(AppInfo.tagline,
                             style: TextStyle(color: scheme.onSurfaceVariant)),
