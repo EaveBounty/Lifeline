@@ -33,7 +33,8 @@
 │       └── resume.md
 ├── attachments/<yyyy>/<sha1[-8]>-<原文件名>   # 相对路径被记录索引
 └── .lifeline/
-    └── state.json                 # schema_version / 迁移记录 / 最近编译状态
+    ├── state.json                 # schema_version / 迁移记录 / 最近编译状态
+    └── vault.dat                  # 加密密钥保险库（随同步根同步；见 §3.5）
 ```
 
 > 密钥降级文件 `secrets.local.json` **不在同步根内**，位于 App 支持目录
@@ -97,6 +98,56 @@ extra: {}
 - 仅作为 `flutter_secure_storage` 的**降级**方案（Linux 无 keyring / 无桌面会话）。
 - 文件写入后尽力设为 **0600 权限**（非 Windows）；因为不在同步根内，天然不参与同步。
 - UI 必须显式提示"密钥以本地受权限保护文件存储，未加密"。
+
+---
+
+## 3.5 `.lifeline/vault.dat`（加密密钥保险库，随同步根同步）
+
+用户可选启用「密钥保险库」，使 API Key **随同步根一起同步**，同时**不落明文**。
+位置：`<SyncRoot>/.lifeline/vault.dat`。实现见 `lib/services/secrets/crypto_vault.dart`
+（纯逻辑）/ `vault_store.dart`（IO）/ `secret_store.dart`（门面）。
+
+### 3.5.1 外层格式（混淆，非安全）
+
+```
+LFV1
+<base64，每 76 字符一行，末尾换行>
+```
+
+- 去掉首行魔数 `LFV1` 后拼接所有行 → base64 解码 → 得到 **XOR 流混淆后的信封 JSON 字节**。
+- XOR keystream = 反复 `sha256(appConst || obfSalt || counter)`（`counter` 为 4B 大端）；
+  `appConst` / `obfSalt` 均硬编码于源码。
+- **明确：外层混淆 ≠ 安全。** keystream 完全可逆、常量公开，仅用于避免文件被人肉一眼识别。
+  **真正的机密性与完整性来自「口令 + KDF + AEAD」**，与混淆层无关。
+
+### 3.5.2 信封（解混淆后的 JSON）
+
+```jsonc
+{
+  "v": 1,
+  "kdf": "pbkdf2-sha256",
+  "iters": 210000,
+  "salt": "<base64 16B>",
+  "wrap": { "n": "<base64 12B>", "c": "<base64: wrappedDEK || GCM tag>" },
+  "data": { "n": "<base64 12B>", "c": "<base64: cipherText || GCM tag>" }
+}
+```
+
+- **KEK** = `pbkdf2(macAlgorithm: Hmac.sha256, iterations: 210000, bits: 256)(口令, salt)`。
+- **DEK** = 32B 随机；`wrappedDEK` = `AES-256-GCM(KEK, DEK, wrap.n)`。
+- **明文** = `utf8(JSON.stringify({"<key_ref>": "<API Key>", ...}))`；
+  `data.c` = `AES-256-GCM(DEK, 明文, data.n)`。`c` 字段均含 16B GCM tag。
+- 读取时先 PBKDF2 得 KEK → 解出 DEK → 解出明文；口令错误/任一字节被篡改 → **GCM 认证失败**，
+  抛受控 `VaultException`，绝不返回半解数据，也不崩溃。
+- 改口令 = 用旧口令解出明文，再用新口令生成全新信封（新 salt / 新 DEK），原子覆盖。
+
+### 3.5.3 多设备与迁移
+
+- 有多设备时，**各端使用同一口令**即可解锁同一份 `vault.dat`；文件随同步工具传输（密文）。
+- 启用保险库时，会将系统密钥库 / `secrets.local.json` 中的现有键值并入保险库（可保留源）。
+- 解锁成功后，App 可把 DEK 以 base64 缓存进**本机**系统密钥库（键 `__vault_dek__`）以支持启动自动解锁；
+  「清除本机缓存」删除该键并锁定（不影响保险库文件本身）。
+- **口令丢失不可恢复**：文件为 AEAD 密文，无后门、无找回途径。
 
 ---
 
@@ -386,3 +437,4 @@ CREATE TABLE attachments (
 
 - 2026-10-06 初版：同步根结构、Record/profile/附件/resumes/state schema、版本迁移、原子写与冲突、索引重建、校验规则（对齐 `ARCHITECTURE.md` §4）。
 - 2026-10-06 对齐实现（B5/B6）：`lifeline.yaml` 改 `app.theme_mode`/`ai.default_provider_id`/`compile`/`research`；`profile.json` 改 `sections{}` 包裹并补 `schema_version`；record/meta/spec 补 `schema_version`；`secrets.local.json` 移至 App 支持目录（`SyncLayout.secretsFile`）；重建索引含附件扫描；修正迁移实现指向 `RecordsRepository.rebuildIndex()`。
+- 2026-10-07 新增加密密钥保险库 `.lifeline/vault.dat`（§3.5）：信封加密（PBKDF2-HMAC-SHA256 210000 + AES-256-GCM，含 wrapped DEK + 数据两段）、`LFV1` 外层混淆（明确「混淆≠安全」）、多设备同口令、迁移与设备缓存说明。

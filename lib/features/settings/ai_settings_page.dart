@@ -4,6 +4,7 @@ library;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/widgets/common.dart';
@@ -71,7 +72,15 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
       builder: (_) => _ProviderEditDialog(initial: initial, secrets: secrets),
     );
     if (draft == null) return;
-    // 密钥只写系统密钥库，绝不落到 YAML / 日志。
+    // 保险库已启用但锁定：拒绝写入并引导解锁，避免密钥落到旧后端造成割裂。
+    final savingKey = draft.clearKey ||
+        (draft.apiKey != null && draft.apiKey!.isNotEmpty);
+    if (savingKey && secrets.vaultExists && !secrets.vaultUnlocked) {
+      _snack('请先解锁保险库后再保存密钥。');
+      if (mounted) context.push('/settings/vault');
+      return;
+    }
+    // 密钥只写密钥保险库或系统密钥库，绝不落到 YAML / 日志。
     if (draft.clearKey) {
       await secrets.delete(draft.provider.keyRef);
     }
@@ -320,8 +329,8 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'API Key 只写入系统密钥库（失败时降级本地权限文件），不会写入同步 YAML，也不会出现在日志中。'
-            'Provider 的 key_ref 只是指向密钥库的键名。',
+            'API Key 写入系统密钥库；若已启用「密钥保险库」，则加密存入同步根 `.lifeline/vault.dat` 随同步走。'
+            '均不会写入同步 YAML，也不会出现在日志中。Provider 的 key_ref 只是指向密钥库的键名。',
             style: TextStyle(
               color: scheme.onSurfaceVariant,
               height: 1.45,

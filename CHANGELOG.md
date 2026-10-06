@@ -9,6 +9,17 @@
 - U0 脚手架；U1 数据层；U2 首启与设置；U3 信息表与附件；U4 首页完整简历；
   U5 编译管线与渲染器；U6 AI 录入/编译；U7 智能导出；U8 同步文档；U9 测试与 CI。
 
+## [0.4.0] - 2026-10-07
+
+### 新增
+- **加密密钥保险库（加密同步）**：`lib/services/secrets/`（`crypto_vault.dart` 信封加密、`vault_store.dart` IO/解锁态、`secret_store.dart` 门面、`vault_providers.dart` 控制器）；API Key 经**口令 + PBKDF2-HMAC-SHA256(210000) + AES-256-GCM**（KEK 包裹 DEK、DEK 加密数据两段）写入 `<SyncRoot>/.lifeline/vault.dat`，随同步跨设备；多设备同口令解锁、设备 DEK 缓存自动解锁、旧密钥迁移、设置页 `/settings/vault`；外层 `LFV1` + 换行 base64 仅作**混淆**（明确「混淆≠安全」）。
+- 依赖：`cryptography ^2.9.0`。
+
+### 修复（安全审查后）
+- 锁定态 `read/readAll` 不再回退旧后端（回退将绕过锁定）；`write/delete` 锁定态抛受控错误。
+- 迁移默认删除旧后端源键；crypto 层拒绝空/短口令（<8）；解锁按信封记录的 `iters` 派生（支持 KDF 升级）；`rewrap` 改为真最小重包（数据密文不变）；`forgetDevice` 诚实返回成败。
+- 新增 `test/secret_store_lock_test.dart` 与加密用例（共 72 测试）。
+
 ## [0.3.0] - 2026-10-06
 
 ### 新增

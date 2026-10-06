@@ -48,6 +48,9 @@ class SyncLayout {
   /// 内部状态文件。
   static const String stateFile = 'state.json';
 
+  /// 加密密钥保险库文件（随同步根同步；信封加密，见 DATA_FORMAT §3.5）。
+  static const String vaultFile = 'vault.dat';
+
   /// 冲突副本后缀（多端并发写时保留）。
   static const String conflictSuffix = '.conflict';
 }

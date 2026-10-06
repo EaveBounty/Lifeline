@@ -67,6 +67,7 @@
 | 导出模板 | 10 套风格（ATS 单列 / 现代双栏 / 学术 CV / 应届生 / 教师 / 创意 / 商务 / 技术紧凑 / 优雅衬线 / 极简），按目标岗位智能推荐，导出向导内**可视化模板预览**；桌面 Typst 精品、全平台 DartPdf 兜底、DOCX/Markdown |
 | 简历评估（一体两面） | ① **岗位适配诊断**：对照 **60 类岗位画像（细分行业 + 职级）** 的硬性要求找缺漏（教师缺教资、算法缺竞赛…），给出**按边际效益排序**的提升行动与资源；② **客观质量评分**：多维打分（启发式离线 / AI）。结果写回 `meta.json` |
 | 密钥安全 | `flutter_secure_storage`，Linux 缺失 keyring 时降级为受权限文件并显式提示 |
+| 密钥保险库（加密同步） | 可选：API Key 用口令加密（PBKDF2 210000 + AES-256-GCM 信封）写入同步根 `.lifeline/vault.dat`，随同步跨设备；多设备同口令解锁；口令丢失不可恢复 |
 | 离线优先 | 无网络可用；云端能力（LLM/联网调研）均为可选增强 |
 
 ---
@@ -167,6 +168,7 @@ lifeline/
 │   └── resumes/<id>/{meta.json,spec.json,resume.pdf,resume.docx,resume.md}
 ├── attachments/<yyyy>/<sha1[-8]>-<原文件名>
 └── .lifeline/state.json     # schema 版本 / 迁移 / 最近编译状态
+                             # .lifeline/vault.dat 可选：加密密钥保险库（随同步，见 §2）
 ```
 
 > 密钥降级文件 `secrets.local.json` **不在同步根内**，位于 App 支持目录，默认不同步。
@@ -197,7 +199,8 @@ lifeline/
 | 路由 | `go_router` | ^18.0.2 | BSD-3-Clause |
 | 结构化索引 | `drift` + `drift_flutter` | ^2.28.0 / ^0.2.4 | MIT |
 | YAML | `yaml` + `yaml_edit` + `yaml_writer` | ^3.1.3 / ^2.2.2 / ^2.1.0 | MIT / BSD-3 |
-| 密钥 | `flutter_secure_storage` | ^9.2.2 | BSD-3-Clause |
+| 密钥 | `flutter_secure_storage` | ^11.2.0 | BSD-3-Clause |
+| 加密 | `cryptography` | ^2.9.0 | Apache-2.0 |
 | 文件/目录选择 | `file_picker` | ^8.1.0 | MIT |
 | 图片 | `image_picker`（移动）+ `file_picker`（桌面） | ^1.1.2 | BSD-3-Clause |
 | PDF 通用 | `pdf` + `printing` | ^3.11.1 / ^5.13.2 | Apache-2.0 |
@@ -372,3 +375,5 @@ DOCX / Markdown 接受模板参数（DOCX 保持单列 ATS，可选「modern」�
 - 2026-10-06 评估重构为一体两面（v0.2.0）：`ResumeEvaluation` 拆为 `FitAnalysis`（岗位适配诊断）+ `ObjectiveScore`（客观质量评分），schema v2 兼容 v1；新增岗位画像库 `lib/data/role_profiles.dart`（16 类岗位的硬性证书/技能/典型经历/加分项/行动+资源，如教师教资 NTCE、算法 Kaggle/天池/LeetCode）；启发式按 **边际效益**（gain×effort 权重）排序生成提升行动；评估页分段展示并支持可寻址路由 `/resumes/eval/:id`；`resume_manager_page` 徽章显示 `适配/客观` 双分；`test/resume_eval_test.dart` 扩到 13 例；新增评估截图。
 - 2026-10-06 更名与图标（v0.3.0）：显示名改为「**履痕**」（英文标识/仓库 `Lifeline`、包名 `com.eavebounty.lifeline` 不变）；新增 `tool/gen_icon.py`（Python 绘 SVG + ImageMagick 栅格化），重绘图标并生成 Android mipmap / Windows `.ico` / Web `Icon-*` 与 `favicon`；UI 标题与各平台标签统一为「履痕」。
 - 2026-10-06 岗位画像扩充至 **60 类**（细分行业 + 职级：技术/产品设计/商科/泛商科/文教/医药科学/工程/法律公职/人力行政），`match` 支持中英混合与行业+职级加权；导出向导新增**模板可视化预览**（`lib/features/export/template_preview.dart`，纯自绘缩略图 + 放大预览）；新增真实模型联测脚本 `tool/ai_eval_live_test.dart`（本地 Ollama OpenAI 兼容，端到端跑通 AI 精评）。
+- 2026-10-07 新增**加密密钥保险库**（可同步）：`lib/services/secrets/`（`crypto_vault.dart` 纯逻辑信封加密、`vault_store.dart` IO/解锁态、`secret_store.dart` 门面、`vault_providers.dart` 控制器）；API Key 经口令 + PBKDF2-HMAC-SHA256(210000) + AES-256-GCM（wrapped DEK + 数据两段）加密后写入 `<SyncRoot>/.lifeline/vault.dat`，外层 `LFV1` 换行 base64 仅作混淆（明确「混淆≠安全」）；多设备同口令解锁、设备 DEK 缓存自动解锁、迁移旧密钥、设置页入口 `/settings/vault`；新增 `test/crypto_vault_test.dart`（6 例）。
+- 2026-10-07 密钥保险库安全加固（v0.4.0，经独立安全审查）：锁定态 `read/readAll` **不再回退旧后端**（防绕过锁定）；`write/delete` 锁定态抛受控错误；`migrateFromLocal` 默认删除旧源键；crypto 层拒绝空/短口令（<8）；解锁按信封 `iters` 派生（支持 KDF 升级）；`rewrap` 改为**真最小重包**（仅重包 DEK，数据密文不变）；`forgetDevice` 诚实返回成败；`ai_settings` 锁定时引导解锁。测试增至 72。

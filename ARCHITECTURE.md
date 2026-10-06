@@ -103,6 +103,8 @@ lifeline/
 │   │   ├── render/          # renderer.dart(接口) typst_renderer.dart
 │   │   │                    # dart_pdf_renderer.dart docx_renderer.dart md_renderer.dart
 │   │   ├── watch/           # change_watcher.dart (FS+poll+debounce)
+│   │   ├── secrets/         # crypto_vault.dart vault_store.dart secret_store.dart
+│   │   │                    # vault_providers.dart (加密保险库 + 密钥门面)
 │   │   └── import_export/   # importer.dart exporter.dart
 │   └── l10n/                # app_zh.arb app_en.arb (gen-l10n)
 ├── test/                    # 单元 + widget 测试
@@ -130,7 +132,8 @@ lifeline/
 │       ├── resume.pdf  resume.docx  resume.md
 ├── attachments/<yyyy>/<sha1[-8]>-<原文件名>           # 相对路径被记录索引
 └── .lifeline/
-    └── state.json              # schema_version / 迁移记录 / 最近编译状态
+    ├── state.json              # schema_version / 迁移记录 / 最近编译状态
+    └── vault.dat               # 加密密钥保险库（可选，随同步根同步；§7.4）
 ```
 
 > 密钥降级文件 `secrets.local.json` **不在同步根内**，位于 App 支持目录
@@ -259,8 +262,13 @@ Flutter 原生渲染（`CustomScrollView` + sections），实时反映 DB；不�
 见 §5.2。变更监测 + 纯函数编译 + UI 实时刷新。
 
 ### 7.4 密钥安全与降级
-优先 `flutter_secure_storage`；Linux 缺 libsecret/gnome-keyring 或无桌面会话时，降级到
+默认优先 `flutter_secure_storage`；Linux 缺 libsecret/gnome-keyring 或无桌面会话时，降级到
 App 本地受权限文件（非同步根内），并在 UI 显式提示风险与迁移方法。
+
+可选启用**加密密钥保险库**（`lib/services/secrets/`）：把 API Key 用口令加密后写入
+`<SyncRoot>/.lifeline/vault.dat`，随同步根跨设备同步。安全模型 = 口令 + PBKDF2-HMAC-SHA256(210000)
++ AES-256-GCM 信封（wrapped DEK + 数据两段）；外层 `LFV1` 换行 base64 仅作**混淆**（明确非安全）。
+解锁后可缓存 DEK 进本机系统密钥库以自动解锁；口令丢失不可恢复。详见 `docs/DATA_FORMAT.md` §3.5。
 
 ---
 
@@ -333,3 +341,4 @@ App 本地受权限文件（非同步根内），并在 UI 显式提示风险与
 ## 变更日志
 - 2026-10-06 初版：锁定技术栈、数据格式、编译管线、风险与实施阶段。
 - 2026-10-06 修复对齐（A1-A4/B1-B9）：附件索引可随重建恢复、AI 录入回写附件、id/附件路径白名单与越界校验、启动根 probe 校验、内嵌 CJK 字体、语言/导出默认项接线、watcher autoDispose、`extra_headers` 脱敏、导入 id 校验、CI `permissions: contents: read`；profile 结构更正为 `sections{}`、补 `schema_version`、`secrets.local.json` 更正为 App 支持目录。
+- 2026-10-07 新增加密密钥保险库（§7.4）：`services/secrets/`（`crypto_vault`/`vault_store`/`secret_store` 门面/`vault_providers`），`<SyncRoot>/.lifeline/vault.dat` 随同步根同步；PBKDF2(210000)+AES-256-GCM 信封、`LFV1` 混淆（非安全）、设备 DEK 缓存自动解锁与设置页 `/settings/vault`。

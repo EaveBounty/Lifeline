@@ -358,8 +358,10 @@ class ResumeLibraryController extends AsyncNotifier<List<ResumeMeta>> {
 
 // --- Secrets ---
 
-final secretStoreProvider =
-    Provider<SecretStore>((ref) => SecretStore());
+final secretStoreProvider = Provider<SecretStore>((ref) {
+  final root = ref.watch(syncRootProvider.select((s) => s.path));
+  return SecretStore(rootPath: root);
+});
 
 // --- 全量简历 ---
 

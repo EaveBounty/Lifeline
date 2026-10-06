@@ -14,6 +14,7 @@ import '../../data/models/app_settings.dart';
 import '../../data/models/profile_record.dart';
 import '../../data/models/record_category.dart';
 import '../../data/providers.dart';
+import '../../services/secrets/vault_providers.dart';
 
 /// 版本号：与 pubspec.yaml 的 version 保持一致（未引入 package_info_plus）。
 const String _appVersion = '0.1.0+1';
@@ -148,6 +149,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const SizedBox(height: 4),
             _ai(settings),
             const SizedBox(height: 4),
+            _security(),
+            const SizedBox(height: 4),
             _data(records),
             const SizedBox(height: 4),
             _about(),
@@ -265,6 +268,41 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           Text(
             '密钥优先存系统密钥库，不写入同步 YAML；导出/录入等 AI 功能使用默认 Provider。',
+            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _security() {
+    final theme = Theme.of(context);
+    final status = ref.watch(vaultStatusProvider).value;
+    final exists = status?.exists ?? false;
+    final unlocked = status?.unlocked ?? false;
+    final stateText = !exists ? '未启用' : (unlocked ? '已解锁' : '已锁定');
+    return SectionCard(
+      title: '密钥保险库（加密同步）',
+      icon: Icons.shield_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              unlocked ? Icons.lock_open : Icons.lock_outline,
+              color: unlocked ? theme.colorScheme.primary : null,
+            ),
+            title: const Text('密钥保险库'),
+            subtitle: Text('状态：$stateText'),
+            trailing: FilledButton.tonal(
+              onPressed: () => context.push('/settings/vault'),
+              child: const Text('管理'),
+            ),
+          ),
+          Text(
+            '把 API Key 用口令加密后存入同步根 `.lifeline/vault.dat`，随同步一起走；'
+            '跨设备用同一口令解锁。口令丢失不可恢复。',
             style: TextStyle(color: theme.colorScheme.onSurfaceVariant, height: 1.4),
           ),
         ],

@@ -70,6 +70,14 @@ Future<void> main() async {
     }
   }
 
+  // 密钥保险库自动解锁：仅当设备密钥库缓存了 DEK 时快速解密，不弹口令。
+  // 未挂载同步根或未创建保险库时为空操作。
+  try {
+    await container.read(secretStoreProvider).tryAutoUnlock();
+  } catch (e) {
+    appLog.warning('密钥保险库自动解锁失败: $e');
+  }
+
   runApp(
     UncontrolledProviderScope(
       container: container,
