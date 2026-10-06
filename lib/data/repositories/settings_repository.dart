@@ -1,13 +1,12 @@
 /// 同步根内 lifeline.yaml 的读写（不含密钥）。
 library;
 
-import 'dart:io';
-
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 import 'package:yaml_writer/yaml_writer.dart';
 
 import '../../core/constants.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/utils/file_utils.dart';
 import '../models/app_settings.dart';
 

@@ -1,16 +1,15 @@
 /// 附件仓库：外部文件复制进 `attachments/<yyyy>/<sha1前8>-<原名>`，并写索引。
 library;
 
-import 'dart:io';
-
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../../core/logging.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/utils/file_utils.dart';
 import '../../core/utils/path_guard.dart';
-import '../db/database.dart';
+import '../db/record_index.dart';
 import '../models/attachment.dart';
 
 /// 记录/profile 中声明的附件相对路径（真相源），用于索引重建。
@@ -25,7 +24,7 @@ class AttachmentRepository {
   AttachmentRepository({required this.rootPath, required this.db});
 
   final String rootPath;
-  final LifelineDatabase db;
+  final RecordIndex db;
 
   static const Uuid _uuid = Uuid();
 

@@ -9,6 +9,7 @@ import 'package:drift/native.dart';
 
 import '../models/attachment.dart';
 import '../models/profile_record.dart';
+import 'record_index.dart';
 
 part 'database.g.dart';
 
@@ -50,7 +51,7 @@ class Attachments extends Table {
 }
 
 @DriftDatabase(tables: [Records, Attachments])
-class LifelineDatabase extends _$LifelineDatabase {
+class LifelineDatabase extends _$LifelineDatabase implements RecordIndex {
   /// [executor] 仅用于测试注入（如内存库）；生产默认后台打开 [indexFile]。
   LifelineDatabase(File indexFile, {QueryExecutor? executor})
       : super(executor ?? NativeDatabase.createInBackground(indexFile));
@@ -71,6 +72,7 @@ class LifelineDatabase extends _$LifelineDatabase {
   MigrationStrategy get migration =>
       MigrationStrategy(onCreate: (m) async => m.createAll());
 
+  @override
   Future<List<ProfileRecord>> allRecords() async {
     final rows = await (select(records)
           ..orderBy([
@@ -89,9 +91,11 @@ class LifelineDatabase extends _$LifelineDatabase {
     return out;
   }
 
+  @override
   Future<void> upsertRecord(ProfileRecord record) =>
       into(records).insertOnConflictUpdate(_companion(record));
 
+  @override
   Future<void> upsertRecords(List<ProfileRecord> list) async {
     if (list.isEmpty) return;
     await batch((b) {
@@ -99,9 +103,11 @@ class LifelineDatabase extends _$LifelineDatabase {
     });
   }
 
+  @override
   Future<void> deleteRecord(String id) =>
       (delete(records)..where((t) => t.id.equals(id))).go();
 
+  @override
   Future<int> recordCount() async {
     final countExp = records.id.count();
     final row =
@@ -109,6 +115,7 @@ class LifelineDatabase extends _$LifelineDatabase {
     return row.read(countExp) ?? 0;
   }
 
+  @override
   Stream<int> watchRecordCount() {
     final countExp = records.id.count();
     return (selectOnly(records)..addColumns([countExp]))
@@ -116,6 +123,7 @@ class LifelineDatabase extends _$LifelineDatabase {
         .watchSingle();
   }
 
+  @override
   Future<List<Attachment>> allAttachments() async {
     final rows = await (select(attachments)
           ..orderBy([
@@ -128,9 +136,11 @@ class LifelineDatabase extends _$LifelineDatabase {
     return rows.map(_toAttachment).toList();
   }
 
+  @override
   Future<void> upsertAttachment(Attachment attachment) =>
       into(attachments).insertOnConflictUpdate(_attachmentCompanion(attachment));
 
+  @override
   Future<void> upsertAttachments(List<Attachment> list) async {
     if (list.isEmpty) return;
     await batch((b) {
@@ -141,9 +151,11 @@ class LifelineDatabase extends _$LifelineDatabase {
     });
   }
 
+  @override
   Future<void> deleteAttachment(String id) =>
       (delete(attachments)..where((t) => t.id.equals(id))).go();
 
+  @override
   Future<void> clearAll() async {
     await delete(attachments).go();
     await delete(records).go();

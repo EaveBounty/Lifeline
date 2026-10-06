@@ -1,13 +1,12 @@
 /// 简历库：查看/重新生成/编辑备注/删除定向简历。
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/platform/io_platform.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/export_request.dart';
 import '../../data/providers.dart';
@@ -79,7 +78,20 @@ class _ResumeTile extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ListTile(
         leading: Icon(_statusIcon(meta.status), color: theme.colorScheme.primary),
-        title: Text(meta.name),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(meta.name, overflow: TextOverflow.ellipsis),
+            ),
+            if (meta.evaluation != null) ...[
+              const SizedBox(width: 8),
+              _ScoreBadge(
+                score: meta.evaluation!.overall,
+                ai: meta.evaluation!.aiAssisted,
+              ),
+            ],
+          ],
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -93,11 +105,15 @@ class _ResumeTile extends ConsumerWidget {
         ),
         trailing: PopupMenuButton<String>(
           onSelected: (action) => _onAction(context, ref, action),
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'open', child: Text('打开所在目录')),
-            PopupMenuItem(value: 'regen', child: Text('重新生成')),
-            PopupMenuItem(value: 'notes', child: Text('编辑备注')),
-            PopupMenuItem(value: 'delete', child: Text('删除')),
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'eval',
+              child: Text(meta.evaluation == null ? '评估' : '查看评估'),
+            ),
+            const PopupMenuItem(value: 'open', child: Text('打开所在目录')),
+            const PopupMenuItem(value: 'regen', child: Text('重新生成')),
+            const PopupMenuItem(value: 'notes', child: Text('编辑备注')),
+            const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
         ),
       ),
@@ -110,6 +126,9 @@ class _ResumeTile extends ConsumerWidget {
     String action,
   ) async {
     switch (action) {
+      case 'eval':
+        context.push('/resumes/eval', extra: meta);
+        break;
       case 'open':
         await _reveal(context, ref);
         break;
@@ -228,4 +247,48 @@ class _ResumeTile extends ConsumerWidget {
   static String _fmt(DateTime t) =>
       '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+}
+
+/// 列表项上的总分徽章。
+class _ScoreBadge extends StatelessWidget {
+  const _ScoreBadge({required this.score, required this.ai});
+  final int score;
+  final bool ai;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = score >= 80
+        ? Colors.green.shade600
+        : score >= 60
+            ? Colors.orange.shade700
+            : scheme.error;
+    return Tooltip(
+      message: ai ? 'AI 评估总分' : '启发式评估总分',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (ai) ...[
+              Icon(Icons.auto_awesome, size: 12, color: color),
+              const SizedBox(width: 3),
+            ],
+            Text(
+              '$score',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

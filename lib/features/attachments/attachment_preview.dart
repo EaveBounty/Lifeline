@@ -1,12 +1,12 @@
 /// 附件展示复用组件：缩略图与全屏预览（records / attachments 共享）。
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants.dart';
+import '../../core/platform/file_image.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/utils/path_guard.dart';
 
 /// 相对路径 -> 绝对文件；越界（路径遍历）抛 [ArgumentError]。
@@ -55,10 +55,10 @@ class AttachmentThumb extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: isImage
-            ? Image.file(
+            ? fileImage(
                 file,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
+                onError: () =>
                     _ThumbFallback(name: attachmentName(relPath)),
               )
             : _ThumbFallback(name: attachmentName(relPath)),
@@ -138,11 +138,10 @@ Future<void> showAttachmentPreview(
                     ? InteractiveViewer(
                         minScale: 0.5,
                         maxScale: 5,
-                        child: Image.file(
+                        child: fileImage(
                           file,
                           fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) =>
-                              _MissingPreview(name: name),
+                          onError: () => _MissingPreview(name: name),
                         ),
                       )
                     : Padding(

@@ -5,19 +5,20 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../../core/logging.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/result.dart';
 import '../../data/models/export_request.dart';
 import '../../data/models/resume_doc.dart';
 import '../../data/repositories/resume_repository.dart';
 import '../ai/llm_client.dart';
 import '../render/renderer_registry.dart';
+import 'resume_eval_service.dart';
 
 class ExportService {
   ExportService({
@@ -117,6 +118,8 @@ class ExportService {
     onStage?.call('保存');
     try {
       await repo.saveSpec(id, tailored);
+      final evaluation = ResumeEvalService(llm: llm)
+          .evaluateHeuristic(doc: tailored, request: request);
       final meta = ResumeMeta(
         id: id,
         name: _displayName(full, request),
@@ -128,6 +131,8 @@ class ExportService {
         files: files,
         providerModel: '$providerId/$model',
         researchDigest: digest,
+        request: request,
+        evaluation: evaluation,
         createdAt: now,
         updatedAt: DateTime.now(),
         notes: '',

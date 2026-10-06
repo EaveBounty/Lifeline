@@ -6,7 +6,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
-import 'change_watcher.dart';
+import 'change_watcher_factory.dart';
 
 /// B4：autoDispose 保证 UI 不再监听（根卸载/detach）时旧 watcher 与 Timer 被释放。
 final autoCompileProvider = Provider.autoDispose<ChangeWatcher?>((ref) {
@@ -20,7 +20,7 @@ final autoCompileProvider = Provider.autoDispose<ChangeWatcher?>((ref) {
     settingsProvider.select((s) => s.value?.watchDebounceMs ?? 600),
   );
 
-  final watcher = ChangeWatcher(
+  final watcher = createChangeWatcher(
     rootPath: path,
     debounce: Duration(milliseconds: debounceMs),
     onChanged: () {

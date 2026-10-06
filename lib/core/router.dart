@@ -3,9 +3,11 @@ library;
 
 import 'package:go_router/go_router.dart';
 
+import '../data/models/export_request.dart';
 import '../features/ai/capture_page.dart';
 import '../features/attachments/attachments_page.dart';
 import '../features/export/export_page.dart';
+import '../features/export/resume_eval_page.dart';
 import '../features/export/resume_manager_page.dart';
 import '../features/home/full_resume_page.dart';
 import '../features/onboarding/sync_guide_page.dart';
@@ -38,5 +40,13 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/capture', builder: (_, __) => const CapturePage()),
     GoRoute(path: '/export', builder: (_, __) => const ExportPage()),
     GoRoute(path: '/resumes', builder: (_, __) => const ResumeManagerPage()),
+    GoRoute(
+      path: '/resumes/eval',
+      builder: (_, s) {
+        final meta = s.extra;
+        if (meta is! ResumeMeta) return const ResumeManagerPage();
+        return ResumeEvalPage(meta: meta);
+      },
+    ),
   ],
 );

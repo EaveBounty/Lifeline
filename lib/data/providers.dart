@@ -3,17 +3,16 @@
 /// 无同步根时所有 Async provider 返回空默认值，不抛错。
 library;
 
-import 'dart:io';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/constants.dart';
+import '../core/platform/io_platform.dart';
 import '../core/result.dart';
 import '../services/compile/resume_compiler.dart';
 import '../services/secrets/secret_store.dart';
 import 'config/app_config.dart';
-import 'db/database.dart';
+import 'db/record_index_factory.dart';
 import 'models/ai_provider.dart';
 import 'models/app_settings.dart';
 import 'models/attachment.dart';
@@ -122,11 +121,11 @@ class SyncRootController extends Notifier<SyncRootState> {
 }
 
 /// 索引数据库；无根时为 null。
-final databaseProvider = Provider<LifelineDatabase?>((ref) {
+final databaseProvider = Provider<RecordIndex?>((ref) {
   final path = ref.watch(syncRootProvider.select((s) => s.path));
   if (path == null) return null;
-  final file = File(p.join(path, SyncLayout.dataDir, SyncLayout.indexFile));
-  final db = LifelineDatabase(file);
+  final indexPath = p.join(path, SyncLayout.dataDir, SyncLayout.indexFile);
+  final db = openRecordIndex(indexPath);
   ref.onDispose(db.close);
   return db;
 });

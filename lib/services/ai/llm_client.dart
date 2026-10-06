@@ -5,10 +5,10 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../../core/platform/io_platform.dart';
 import '../../core/result.dart';
 
 /// 多模态内容片段 → OpenAI chat 格式。

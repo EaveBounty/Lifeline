@@ -7,10 +7,10 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 
 import '../../core/constants.dart';
 import '../../core/logging.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/utils/file_utils.dart';
 
 class JsonFileStore {

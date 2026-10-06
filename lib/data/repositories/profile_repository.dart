@@ -1,11 +1,10 @@
 /// Profile 单例仓库：读写 data/profile.json。
 library;
 
-import 'dart:io';
-
 import 'package:path/path.dart' as p;
 
 import '../../core/constants.dart';
+import '../../core/platform/io_platform.dart';
 import '../json_store/json_file_store.dart';
 import '../models/profile.dart';
 

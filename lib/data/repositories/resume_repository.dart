@@ -1,12 +1,11 @@
 /// 定向简历仓库：管理 `data/resumes/<id>/`（meta.json / spec.json / 导出文件）。
 library;
 
-import 'dart:io';
-
 import 'package:path/path.dart' as p;
 
 import '../../core/constants.dart';
 import '../../core/logging.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/utils/file_utils.dart';
 import '../../core/utils/path_guard.dart';
 import '../json_store/json_file_store.dart';

@@ -4,6 +4,7 @@
 library;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -32,6 +33,22 @@ class _SyncRootSetupPageState extends ConsumerState<SyncRootSetupPage> {
       await _handlePath(path);
     } catch (e) {
       _snack('选择失败：$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _useWebDemo() async {
+    setState(() => _busy = true);
+    try {
+      final ctrl = ref.read(syncRootProvider.notifier);
+      final r = await ctrl.initializeAndAttach('/lifeline-web');
+      r.when(
+        ok: (_) => _snack('已启用浏览器内存演示'),
+        err: (m, _) => _snack(m),
+      );
+    } catch (e) {
+      _snack('初始化失败：$e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -185,6 +202,14 @@ class _SyncRootSetupPageState extends ConsumerState<SyncRootSetupPage> {
                     ),
                   ],
                 ),
+                if (kIsWeb) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _useWebDemo,
+                    icon: const Icon(Icons.memory),
+                    label: const Text('在浏览器中使用（内存演示）'),
+                  ),
+                ],
               ],
             ),
           ),

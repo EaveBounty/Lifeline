@@ -3,8 +3,7 @@
 /// 约定：失败不抛异常，统一返回 [Result]；调用方可按注册表顺序优雅降级。
 library;
 
-import 'dart:io';
-
+import '../../core/platform/io_platform.dart';
 import '../../core/result.dart';
 import '../../core/utils/file_utils.dart';
 import '../../data/models/resume_doc.dart';

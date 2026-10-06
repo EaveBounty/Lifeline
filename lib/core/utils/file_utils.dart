@@ -2,10 +2,11 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
+
+import '../platform/io_platform.dart';
 
 /// 确保目录存在。
 Future<void> ensureDir(String path) async {

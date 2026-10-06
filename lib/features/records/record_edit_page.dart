@@ -1,8 +1,6 @@
 /// 记录编辑页：新增 / 编辑统一表单，含动态亮点、字段、链接与附件选择。
 library;
 
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/platform/io_platform.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/attachment.dart';
 import '../../data/models/profile_record.dart';

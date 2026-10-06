@@ -1,8 +1,6 @@
 /// 智能录入：文字/图片 -> AI 结构化草稿 -> 人工确认 -> 落库。
 library;
 
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/platform/io_platform.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/record_category.dart';
 import '../../data/providers.dart';

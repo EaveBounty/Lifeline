@@ -1,14 +1,13 @@
 /// 记录仓库：真相源为 `data/records/<slug>/<id>.json`，同步维护 drift 索引。
 library;
 
-import 'dart:io';
-
 import 'package:path/path.dart' as p;
 
 import '../../core/constants.dart';
 import '../../core/logging.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/utils/path_guard.dart';
-import '../db/database.dart';
+import '../db/record_index.dart';
 import '../json_store/json_file_store.dart';
 import '../models/profile_record.dart';
 import '../models/record_category.dart';
@@ -19,7 +18,7 @@ class RecordsRepository {
   RecordsRepository({required this.rootPath, required this.db});
 
   final String rootPath;
-  final LifelineDatabase db;
+  final RecordIndex db;
   final JsonFileStore _store = JsonFileStore();
 
   String _dirFor(RecordCategory category) => p.join(

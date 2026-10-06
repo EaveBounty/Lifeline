@@ -1,6 +1,8 @@
 /// 智能导出的输入问卷与产物元数据。
 library;
 
+import 'resume_eval.dart';
+
 /// 导出问卷：明确用途、岗位、企业、要求。
 class ExportRequest {
   final String purpose; // 求职/申请/投稿/内部汇报/其他
@@ -84,6 +86,13 @@ class ResumeMeta {
   final Map<String, String> files; // format -> 相对路径
   final String? providerModel;
   final String? researchDigest;
+
+  /// 生成该简历时使用的问卷（旧数据可能缺失）。
+  final ExportRequest? request;
+
+  /// 多角度评估结果（旧数据可能缺失）。
+  final ResumeEvaluation? evaluation;
+
   final DateTime createdAt;
   final DateTime updatedAt;
   final String notes;
@@ -100,6 +109,8 @@ class ResumeMeta {
     this.files = const {},
     this.providerModel,
     this.researchDigest,
+    this.request,
+    this.evaluation,
     required this.createdAt,
     required this.updatedAt,
     this.notes = '',
@@ -116,6 +127,8 @@ class ResumeMeta {
     Map<String, String>? files,
     String? providerModel,
     String? researchDigest,
+    ExportRequest? request,
+    ResumeEvaluation? evaluation,
     DateTime? updatedAt,
     String? notes,
   }) =>
@@ -131,6 +144,8 @@ class ResumeMeta {
         files: files ?? this.files,
         providerModel: providerModel ?? this.providerModel,
         researchDigest: researchDigest ?? this.researchDigest,
+        request: request ?? this.request,
+        evaluation: evaluation ?? this.evaluation,
         createdAt: createdAt,
         updatedAt: updatedAt ?? DateTime.now(),
         notes: notes ?? this.notes,
@@ -148,6 +163,8 @@ class ResumeMeta {
         'files': files,
         'provider_model': providerModel,
         'research_digest': researchDigest,
+        'request': request?.toJson(),
+        'evaluation': evaluation?.toJson(),
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
         'notes': notes,
@@ -165,8 +182,28 @@ class ResumeMeta {
         files: (j['files'] as Map?)?.map((k, v) => MapEntry('$k', '$v')) ?? const {},
         providerModel: j['provider_model'] as String?,
         researchDigest: j['research_digest'] as String?,
+        request: _parseRequest(j['request']),
+        evaluation: _parseEvaluation(j['evaluation']),
         createdAt: DateTime.tryParse('${j['created_at']}') ?? DateTime.now(),
         updatedAt: DateTime.tryParse('${j['updated_at']}') ?? DateTime.now(),
         notes: (j['notes'] ?? '') as String,
       );
+}
+
+ExportRequest? _parseRequest(dynamic v) {
+  if (v is! Map) return null;
+  try {
+    return ExportRequest.fromJson(v.cast<String, dynamic>());
+  } catch (_) {
+    return null;
+  }
+}
+
+ResumeEvaluation? _parseEvaluation(dynamic v) {
+  if (v is! Map) return null;
+  try {
+    return ResumeEvaluation.fromJson(v.cast<String, dynamic>());
+  } catch (_) {
+    return null;
+  }
 }

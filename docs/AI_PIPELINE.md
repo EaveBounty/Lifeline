@@ -206,6 +206,31 @@
 5. **双版本输出** → ① 给人看的 Typst 精美 PDF；② 给 ATS 看的朴素单列 DOCX；共享同一 JSON 源、不同模板。
 6. **可追溯** → AI 只做选取/改写/排序，所有生成内容可回指源 JSON 字段，便于审校与撤回。
 
+### 3.6 简历多角度评估（Evaluation）
+
+生成定向简历后，可对 `spec.json` 做**多角度评估**：打分 + 缺漏项 + 「后续补什么边际效益最大」的改进建议。
+
+- **双通道**：
+  1. **启发式（默认、离线、确定性）**：`ResumeEvalService.evaluateHeuristic` 为纯函数，不联网不读写文件。`ExportService` 生成简历时会顺带预填一份启发式评估写入 `meta.json`。
+  2. **AI 评估（可选）**：`ResumeEvalService.evaluateWithAi` 调用 `chatCompletion(jsonMode:true)` + `evalSystemPrompt`；模型输出按**不可信数据**解析，解析失败返回 `Err`，UI 回退启发式。
+- **八个维度**（key / 中文）：`match` 岗位匹配度、`completeness` 内容完整度、`impact` 量化成果、`structure` 结构可读性、`language` 语言专业度、`ats` ATS 友好度、`differentiation` 差异化亮点、`density` 篇幅信息密度。
+- **加权总分**：默认权重 `match .20 / impact .15 / completeness .15 / structure .12 / language .10 / ats .13 / differentiation .10 / density .05`（见 `kDimensionWeights`，可调）。
+- **改进建议排序**：`priority` 由 `expectedGain × effortFactor` 降序决定（`effort` 权重 low=1.0 / medium=0.6 / high=0.35），`priority=1` 即**边际效益最高**。
+- **数据落盘**：`ResumeMeta.request`（问卷）与 `ResumeMeta.evaluation`（评估）随 `meta.json` 持久化；旧数据缺字段时解析为 `null`（向后兼容）。
+- **UI**：`lib/features/export/resume_eval_page.dart`（路由 `/resumes/eval`，`extra: ResumeMeta`），简历库列表显示总分徽章。
+
+AI 评估输出 schema（`evalSystemPrompt`）：
+
+```jsonc
+{
+  "overall": 0,
+  "summary": "string",
+  "dimensions": [{ "key": "match", "label": "岗位匹配度", "score": 0, "comment": "string", "evidence": ["依据"] }],
+  "missing": [{ "item": "string", "why": "string", "suggestion": "string", "severity": "high|medium|low" }],
+  "recommendations": [{ "item": "string", "expected_gain": 0, "effort": "low|medium|high", "priority": 1, "rationale": "string" }]
+}
+```
+
 ---
 
 ## 4. 提示词设计原则（全链路统一）
@@ -249,3 +274,4 @@
 
 - 2026-10-06 初版：自动录入 / 自动编译 / 智能导出三链路、schema、提示词原则（严格 JSON、防注入、置信度与人工确认）、定向简历方法论（ATS/页数/STAR）。
 - 2026-10-06 对齐实现（B5/B7）：`ExportRequest` 改为扁平 schema（`target_role`/`target_company`/`page_limit`/`must_include`/`exclude` 等）；密钥降级文件更正为 `secrets.local.json`（App 支持目录）；补充 Provider `extra_headers` 脱敏说明。
+- 2026-10-06 新增 §3.6 简历多角度评估：启发式（离线确定性）+ AI 双通道、八维度加权总分、按边际效益排序的改进建议、`meta.json` 持久化 `request`/`evaluation` 与向后兼容。

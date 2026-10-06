@@ -5,10 +5,10 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../../core/platform/io_platform.dart';
 import '../../core/result.dart';
 import '../../data/models/resume_doc.dart';
 import 'renderer.dart';

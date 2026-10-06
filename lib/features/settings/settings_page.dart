@@ -1,14 +1,13 @@
 /// 设置页：外观、同步、AI、数据、关于。
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/ai_provider.dart';
 import '../../data/models/app_settings.dart';

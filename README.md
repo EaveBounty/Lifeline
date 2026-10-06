@@ -6,7 +6,6 @@
 版权：**长沙市果垂素宇工程设计有限公司**
 
 <p>
-  <!-- 截图占位：构建后替换 -->
   <img src="docs/assets/screenshot-home.png" alt="首页完整简历" width="720">
 </p>
 
@@ -61,6 +60,7 @@
 | AI 自动录入 | 文本 / 图片（vision）→ 严格 JSON → 人工确认落库 |
 | 自动编译 | 文件监听 + 轮询兜底 + debounce，变更即重编译 |
 | 按岗位定向导出 | 岗位调研 → 裁剪策略 → 生成 `spec.json` → 渲染 → 归档简历管理 |
+| 简历多角度评估 | 八维度打分（启发式离线 / AI）+ 缺漏项 + 按边际效益排序的改进建议；结果写回 `meta.json` |
 | 密钥安全 | `flutter_secure_storage`，Linux 缺失 keyring 时降级为受权限文件并显式提示 |
 | 离线优先 | 无网络可用；云端能力（LLM/联网调研）均为可选增强 |
 
@@ -68,16 +68,26 @@
 
 ## 3. 截图
 
-> 占位图待构建产物补充；放入 `docs/assets/`。
+> 以下为 Web 构建产物（`flutter build web --release`）的真实运行截图，由
+> `tool/web_test/run.sh`（Playwright 端到端测试）自动生成；均为 1280px 宽。
 
-| 界面 | 占位 |
+| 界面 | 预览 |
 |---|---|
-| 首启选择同步根 | `docs/assets/screenshot-onboarding.png` |
-| 首页完整简历 | `docs/assets/screenshot-home.png` |
-| 记录编辑 | `docs/assets/screenshot-record-edit.png` |
-| AI 自动录入 | `docs/assets/screenshot-capture.png` |
-| 定向导出问卷 | `docs/assets/screenshot-export.png` |
-| 简历管理 | `docs/assets/screenshot-resumes.png` |
+| 首启选择同步根 | ![首启](docs/assets/screenshot-onboarding.png) |
+| 首页完整简历 | ![首页](docs/assets/screenshot-home.png) |
+| 记录编辑 | ![记录编辑](docs/assets/screenshot-record-edit.png) |
+| AI 自动录入 | ![智能录入](docs/assets/screenshot-capture.png) |
+| 定向导出问卷 | ![定向导出](docs/assets/screenshot-export.png) |
+| 简历管理 | ![简历管理](docs/assets/screenshot-resumes.png) |
+
+### 运行浏览器端到端测试
+
+```bash
+bash tool/web_test/run.sh   # 构建(如需) → 起本地服务 → Playwright 测试 + 重新生成截图
+```
+
+脚本以无头 Chromium 加载本地 web 构建，收集 `console`/`pageerror` 并断言 0 错误，
+校验各页面关键文本与语义，执行一次真实点击交互，并用 ImageMagick 校验截图非空白。
 
 ---
 
@@ -327,3 +337,6 @@ CJK 字体 `assets/fonts/DroidSansFallbackFull.ttf`（Apache-2.0，见 `NOTICE` 
 
 - 2026-10-06 文档与许可初始版（PolyForm NC 1.0.0）。
 - 2026-10-06 修复对齐：内嵌 CJK 字体 `assets/fonts/DroidSansFallbackFull.ttf`（Apache-2.0）、启动根校验、附件索引重建、AI 录入回写附件、路径遍历防护、导出默认项/语言接线、watcher autoDispose、`extra_headers` 脱敏、导入 id 校验、CI 最小权限；同步根结构移除 `secrets.local.yaml`（降级文件改 App 支持目录 `secrets.local.json`）。
+- 2026-10-06 新增 Web 平台：`lib/core/platform/`（dart:io 内存兼容层）、`RecordIndex` 抽象（drift↔内存）、`ChangeWatcher` 条件实现、web 首启内存演示入口；`flutter build web --release --no-web-resources-cdn` 可运行，桌面/移动端行为不变。构建产物本地预览：`tool/serve_web.sh`。
+- 2026-10-06 新增简历多角度评估：`resume_eval.dart`（`ResumeEvaluation` 八维度 + 加权总分 + 缺漏 + 边际效益建议）、`resume_eval_service.dart`（启发式离线 + AI 双通道，模型输出按不可信数据解析）、`resume_eval_page.dart`（路由 `/resumes/eval`）与简历库总分徽章；`ResumeMeta` 持久化 `request`/`evaluation`（旧数据兼容）；`ExportService` 生成时预填启发式评估。
+- 2026-10-06 增补 web 版六张截图与浏览器端到端测试：`tool/web_test/`（Playwright 无头 Chromium 跑通 6 路由 + 1 交互，0 console/pageerror，ImageMagick 校验截图非空白）；`lib/dev/demo_seed.dart`（`?demo=1` 注入示例数据）；`main.dart` Web 端启用语义树（`flt-semantics`）供测试定位；`docs/assets/screenshot-*.png` 更新为真实运行截图。

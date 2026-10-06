@@ -4,11 +4,12 @@
 /// `.ttc`，避免解析崩溃。
 library;
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
+
+import '../../core/platform/io_platform.dart';
 
 /// 字体解析结果。
 class ResolvedFont {
