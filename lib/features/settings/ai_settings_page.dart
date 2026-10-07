@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/ai_provider.dart';
 import '../../data/providers.dart';
+import '../../services/ai/llm_client.dart';
 import '../../services/secrets/secret_store.dart';
 import '../../services/secrets/vault_providers.dart';
 
@@ -157,10 +158,11 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
   Future<void> _test(AiProvider provider) async {
     final secrets = ref.read(secretStoreProvider);
     final messenger = ScaffoldMessenger.of(context);
+    final endpoint =
+        '${provider.baseUrl.replaceAll(RegExp(r'/+$'), '')}/chat/completions';
     setState(() => _testing = provider.id);
     try {
       final key = await secrets.read(provider.keyRef);
-      final base = provider.baseUrl.replaceAll(RegExp(r'/+$'), '');
       final headers = <String, String>{
         'Content-Type': 'application/json',
         ...provider.extraHeaders,
@@ -173,7 +175,7 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
         receiveTimeout: const Duration(seconds: 30),
       ));
       final res = await dio.post(
-        '$base/chat/completions',
+        endpoint,
         data: {
           'model': provider.model,
           'messages': [
@@ -198,12 +200,12 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
     } on DioException catch (e) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text('${provider.name} 连接失败：${e.type.name} ${e.message ?? ''}'),
+          content: Text('${provider.name} 连接失败：${describeDioError(e)}\n地址：$endpoint'),
         ),
       );
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(content: Text('${provider.name} 连接失败：$e')),
+        SnackBar(content: Text('${provider.name} 连接失败：$e\n地址：$endpoint')),
       );
     } finally {
       if (mounted) setState(() => _testing = null);

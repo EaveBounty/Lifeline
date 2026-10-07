@@ -9,6 +9,15 @@
 - U0 脚手架；U1 数据层；U2 首启与设置；U3 信息表与附件；U4 首页完整简历；
   U5 编译管线与渲染器；U6 AI 录入/编译；U7 智能导出；U8 同步文档；U9 测试与 CI。
 
+## [0.5.1] - 2026-10-07
+
+### 修复
+- **Android 发布版无法联网（AI「域名错误/unknown」）**：主 `AndroidManifest.xml` 缺少
+  `INTERNET` 权限（Flutter 仅在 debug/profile 清单注入），导致 release APK 所有网络请求失败。
+  已在主清单声明 `INTERNET` + `ACCESS_NETWORK_STATE`。
+- **网络错误提示更可诊断**：连接测试与 AI 调用把底层异常翻译为中文（超时 / TLS 证书 /
+  域名解析失败或被拦截 / CORS / 未知），并在连接测试中显示实际请求地址，便于排查 base_url、代理与网络。
+
 ## [0.5.0] - 2026-10-07
 
 ### 新增

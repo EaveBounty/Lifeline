@@ -110,12 +110,44 @@ class LlmClient {
       }
       return const Err<String>('无法解析模型输出');
     } on DioException catch (e) {
-      final detail = e.response?.data?.toString() ?? e.message;
-      return Err<String>('请求失败(${e.response?.statusCode}): $detail', e);
+      if (e.response?.statusCode != null) {
+        return Err<String>(
+          '请求失败(HTTP ${e.response!.statusCode})：${_briefBody(e.response?.data)}',
+          e,
+        );
+      }
+      return Err<String>(describeDioError(e), e);
     } catch (e) {
       return Err<String>('请求异常: $e', e);
     }
   }
+}
+
+/// 把底层网络异常转成可诊断的中文说明。
+String describeDioError(DioException e) {
+  final extra = (e.message ?? '').trim();
+  final suffix = extra.isEmpty ? '' : '（$extra）';
+  return switch (e.type) {
+    DioExceptionType.connectionTimeout =>
+      '连接超时：无法到达服务器，请检查网络或代理$suffix',
+    DioExceptionType.sendTimeout => '发送超时$suffix',
+    DioExceptionType.receiveTimeout => '响应超时：服务器无响应$suffix',
+    DioExceptionType.badCertificate => 'TLS 证书校验失败$suffix',
+    DioExceptionType.connectionError =>
+      '无法连接：域名解析失败，或被网络/防火墙/代理拦截。请检查网络、代理与 base_url$suffix',
+    DioExceptionType.badResponse => '服务器返回异常$suffix',
+    DioExceptionType.cancel => '请求已取消$suffix',
+    DioExceptionType.unknown =>
+      '未知网络错误：可能是域名解析失败、CORS（网页端）或证书问题。请检查网络与 base_url$suffix',
+    _ => '网络错误$suffix',
+  };
+}
+
+String _briefBody(dynamic data) {
+  if (data == null) return '';
+  var s = data.toString();
+  if (s.length > 300) s = s.substring(0, 300);
+  return s;
 }
 
 /// 从可能带 ```json 代码块的文本中提取 JSON 字符串。
