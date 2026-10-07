@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../core/platform/io_platform.dart';
 import '../../core/platform/net_proxy.dart';
 import '../../core/result.dart';
+import '../../core/utils/secret_sanitize.dart';
 
 /// 多模态内容片段 → OpenAI chat 格式。
 class LlmContent {
@@ -79,6 +80,9 @@ class LlmClient {
     if (baseUrl.trim().isEmpty || model.trim().isEmpty) {
       return const Err<String>('未配置 base_url 或 model');
     }
+    final key = sanitizeSecret(apiKey);
+    final keyIssue = validateSecret(key);
+    if (keyIssue != null) return Err<String>(keyIssue);
     try {
       final url = '${baseUrl.trimRight().replaceAll(RegExp(r'/+$'), '')}/chat/completions';
       final body = <String, dynamic>{
@@ -91,7 +95,7 @@ class LlmClient {
         data: jsonEncode(body),
         options: Options(
           headers: {
-            'Authorization': 'Bearer $apiKey',
+            'Authorization': 'Bearer $key',
             'Content-Type': 'application/json',
             ...extraHeaders,
           },
@@ -131,6 +135,10 @@ class LlmClient {
 String describeDioError(DioException e) {
   final raw = (e.error ?? e.message ?? '').toString().trim();
   final detail = raw.isEmpty ? '' : '\n底层：$raw';
+  if (raw.contains('Invalid HTTP header') || e.error is FormatException) {
+    return 'API Key 含非法字符（换行 / 中文 / 不可见字符），无法作为请求头发送。'
+        '请在「设置 → API / 模型厂商」重新粘贴密钥。$detail';
+  }
   final isNetworkish = e.response == null;
   if (kIsWeb && isNetworkish) {
     return '网页端被浏览器拦截（很可能是跨域 CORS）：多数 AI 厂商（含 DeepSeek）'

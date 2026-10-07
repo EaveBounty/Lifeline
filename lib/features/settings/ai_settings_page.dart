@@ -12,6 +12,7 @@ import '../../core/platform/net_proxy.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/ai_provider.dart';
 import '../../data/providers.dart';
+import '../../core/utils/secret_sanitize.dart';
 import '../../services/ai/llm_client.dart';
 import '../../services/net/net_prefs.dart';
 import '../../services/secrets/secret_store.dart';
@@ -182,14 +183,21 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
     final messenger = ScaffoldMessenger.of(context);
     final endpoint =
         '${provider.baseUrl.replaceAll(RegExp(r'/+$'), '')}/chat/completions';
+    final key = sanitizeSecret((await secrets.read(provider.keyRef)) ?? '');
+    final keyIssue = validateSecret(key);
+    if (keyIssue != null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('${provider.name} 连接失败：$keyIssue')),
+      );
+      return;
+    }
     setState(() => _testing = provider.id);
     try {
-      final key = await secrets.read(provider.keyRef);
       final headers = <String, String>{
         'Content-Type': 'application/json',
         ...provider.extraHeaders,
       };
-      if (key != null && key.isNotEmpty) {
+      if (key.isNotEmpty) {
         headers['Authorization'] = 'Bearer $key';
       }
       final dio = Dio(BaseOptions(
@@ -679,6 +687,8 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
   bool _obscure = true;
   bool _keySet = false;
   bool _keyKnown = false;
+  bool _keyInvalid = false;
+  String _keyPreview = '';
   bool _clearKey = false;
 
   @override
@@ -713,14 +723,19 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
         setState(() {
           _keySet = false;
           _keyKnown = true;
+          _keyInvalid = false;
+          _keyPreview = '';
         });
       }
       return;
     }
     final value = await widget.secrets.read(ref);
+    final clean = sanitizeSecret(value ?? '');
     if (!mounted) return;
     setState(() {
-      _keySet = value != null && value.isNotEmpty;
+      _keySet = clean.isNotEmpty;
+      _keyInvalid = validateSecret(clean) != null;
+      _keyPreview = clean.isEmpty ? '' : maskSecret(clean);
       _keyKnown = true;
     });
   }
@@ -735,7 +750,7 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
 
   void _submit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final apiKey = _apiKey.text.trim();
+    final apiKey = sanitizeSecret(_apiKey.text);
     final provider = AiProvider(
       id: widget.initial?.id ?? const Uuid().v4(),
       name: _name.text.trim(),
@@ -821,9 +836,10 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                TextField(
+                TextFormField(
                   controller: _apiKey,
                   obscureText: _obscure,
+                  validator: (v) => validateSecret(sanitizeSecret(v ?? '')),
                   decoration: InputDecoration(
                     labelText: 'API Key',
                     helperText: '只写入系统密钥库，不写入 YAML / 日志。留空表示不修改。',
@@ -839,21 +855,33 @@ class _ProviderEditDialogState extends State<_ProviderEditDialog> {
                 Row(
                   children: [
                     Icon(
-                      _keySet ? Icons.lock : Icons.lock_open,
+                      _keyInvalid
+                          ? Icons.error_outline
+                          : _keySet
+                              ? Icons.lock
+                              : Icons.lock_open,
                       size: 16,
-                      color: _keySet ? scheme.primary : scheme.onSurfaceVariant,
+                      color: _keyInvalid
+                          ? scheme.error
+                          : _keySet
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
                     ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         !_keyKnown
                             ? '正在检测密钥…'
-                            : _keySet
-                                ? '当前密钥：已设置'
-                                : '当前密钥：未设置',
+                            : _keyInvalid
+                                ? '当前密钥含非法字符（疑似误粘贴），请「清除密钥」后重新填写'
+                                : _keySet
+                                    ? '当前密钥：已设置（$_keyPreview）'
+                                    : '当前密钥：未设置',
                         style: TextStyle(
                           fontSize: 12.5,
-                          color: scheme.onSurfaceVariant,
+                          color: _keyInvalid
+                              ? scheme.error
+                              : scheme.onSurfaceVariant,
                         ),
                       ),
                     ),
