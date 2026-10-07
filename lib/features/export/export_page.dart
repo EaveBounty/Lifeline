@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/common.dart';
+import '../../core/widgets/term_info.dart';
 import '../../data/models/ai_provider.dart';
 import '../../data/models/export_request.dart';
+import '../../data/models/target_profile.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/resume_repository.dart';
 import '../../services/ai/llm_client.dart';
@@ -43,6 +45,11 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   bool _research = true;
   bool _appendix = false;
 
+  /// 目标画像（级别校准 + 赛道加权）。
+  String _level = TargetLevel.mid.id;
+  String _careerStage = CareerStage.early.id;
+  String _track = Track.general.id;
+
   /// 当前模板；用户手动选择后不再被岗位推荐覆盖。
   String _templateId = ResumeTemplates.defaultId;
   bool _templateTouched = false;
@@ -70,6 +77,9 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       _tone = r.tone;
       _research = r.researchEnabled;
       _appendix = r.appendixEnabled;
+      _level = r.targetLevel;
+      _careerStage = r.careerStage;
+      _track = r.track;
       _templateId = widget.existing?.templateId ?? r.templateId;
       _templateTouched = true;
     }
@@ -143,6 +153,9 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       appendixEnabled: _appendix,
       extraNotes: _notes.text.trim(),
       templateId: _templateId,
+      targetLevel: _level,
+      careerStage: _careerStage,
+      track: _track,
     );
 
     setState(() {
@@ -156,6 +169,27 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       syncRoot: root,
       formats: settings?.defaultExportFormats,
     );
+
+    // 第一步：先做取舍计划（可能产生追问）。
+    setState(() => _stage = '制定取舍计划');
+    final planRes = await service.makePlan(
+      full: full,
+      request: request,
+      baseUrl: provider.baseUrl,
+      apiKey: apiKey.trim(),
+      model: provider.model,
+    );
+    final plan = planRes.valueOrNull;
+
+    // 第二步：若有影响关键事实的追问 → 让用户补充（可跳过）。
+    var answers = const <String>[];
+    if (mounted && plan != null && plan.openQuestions.isNotEmpty) {
+      setState(() => _stage = null);
+      answers = await _askQuestions(plan.openQuestions) ?? const [];
+      if (!mounted) return;
+      setState(() => _stage = '按计划改写');
+    }
+
     final result = await service.generate(
       full: full,
       request: request,
@@ -164,6 +198,8 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       apiKey: apiKey.trim(),
       model: provider.model,
       existingMeta: widget.existing,
+      plan: plan,
+      answers: answers,
       onStage: (stage) {
         if (mounted) setState(() => _stage = stage);
       },
@@ -186,6 +222,63 @@ class _ExportPageState extends ConsumerState<ExportPage> {
         messenger.showSnackBar(SnackBar(content: Text(msg)));
       },
     );
+  }
+
+  /// 追问弹窗：逐条填空，可整体跳过。返回 null 表示取消（按跳过处理）。
+  Future<List<String>?> _askQuestions(List<String> questions) async {
+    final ctrls = [for (final _ in questions) TextEditingController()];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('补充几条信息，简历会更准'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('（可留空跳过，不影响生成）',
+                    style: TextStyle(
+                        color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                        fontSize: 12.5)),
+                const SizedBox(height: 10),
+                for (var i = 0; i < questions.length; i++) ...[
+                  Text(questions[i], style: const TextStyle(height: 1.4)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: ctrls[i],
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                      hintText: '可留空',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('跳过'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('继续生成'),
+          ),
+        ],
+      ),
+    );
+    final out = <String>[];
+    for (var i = 0; i < questions.length; i++) {
+      final v = ctrls[i].text.trim();
+      if (v.isNotEmpty) out.add('${questions[i]} → $v');
+      ctrls[i].dispose();
+    }
+    return ok == true ? out : const [];
   }
 
   Future<AiProvider?> _pickProvider(
@@ -254,6 +347,48 @@ class _ExportPageState extends ConsumerState<ExportPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
+              SectionCard(
+                title: '目标画像',
+                icon: Icons.my_location,
+                child: Column(
+                  children: [
+                    _profilePicker(
+                      label: '目标级别',
+                      tipTitle: '目标级别',
+                      tipPlain: '这份简历要投的职级。不同级别看重的东西不同：'
+                          '校招/初级看潜力与执行，高级看影响范围（scope），管理岗看团队与业绩。',
+                      value: _level,
+                      options: [
+                        for (final c in TargetLevel.all) (c.id, c.label, c.plain),
+                      ],
+                      onChanged: (v) => setState(() => _level = v),
+                    ),
+                    const SizedBox(height: 12),
+                    _profilePicker(
+                      label: '职业阶段',
+                      tipTitle: '职业阶段',
+                      tipPlain: '你现在所处的位置。它决定简历重点：'
+                          '在校生突出教育/项目，转行突出可迁移能力，资深突出领导力与结果。',
+                      value: _careerStage,
+                      options: [
+                        for (final c in CareerStage.all) (c.id, c.label, c.plain),
+                      ],
+                      onChanged: (v) => setState(() => _careerStage = v),
+                    ),
+                    const SizedBox(height: 12),
+                    _profilePicker(
+                      label: '赛道',
+                      tipTitle: '赛道',
+                      tipPlain: '目标行业方向。不同赛道看重的证据不一样，'
+                          '会影响怎么取舍和排版。不确定选「通用」，会按岗位名自动判断。',
+                      value: _track,
+                      options: [for (final c in Track.all) (c.id, c.label, c.plain)],
+                      onChanged: (v) => setState(() => _track = v),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               SectionCard(
                 title: '基本要求',
                 icon: Icons.work_outline,
@@ -578,6 +713,40 @@ class _ExportPageState extends ConsumerState<ExportPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// 带「大白话解释」气泡的画像选择器。
+  Widget _profilePicker({
+    required String label,
+    required String tipTitle,
+    required String tipPlain,
+    required String value,
+    required List<(String, String, String)> options,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<String>(
+            initialValue: value,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: label,
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              for (final (id, text, _) in options)
+                DropdownMenuItem<String>(value: id, child: Text(text)),
+            ],
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          ),
+        ),
+        InfoDot(title: tipTitle, plain: tipPlain),
+      ],
     );
   }
 

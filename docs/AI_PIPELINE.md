@@ -298,3 +298,5 @@ AI 评估输出 schema（`evalSystemPrompt`，schema v2）：
 - 2026-10-06 §3.6 重构为「一体两面」schema v2：分类一 `fit` 岗位适配诊断（16 类岗位画像库 `role_profiles.dart`、硬性证书对照、按录取概率边际效益排序的行动 + 真实资源）、分类二 `objective` 客观质量七维度（去掉 `match`）；`ResumeEvaluation.fromJson` 兼容 v1 旧结构；UI 分段展示 + `fit/obj` 徽章。
 
 - 2026-10-07 v0.5.0：生产裁剪改用重写的「成品级」`tailorSystemPrompt`（取舍/改写/详略/春秋笔法/结构篇幅），并**接线**岗位调研摘要与 `job_description`；新增 `reviseSystemPrompt`（评估→针对性修订闭环）与 `materialCheckSystemPrompt`（正文声称↔材料图片逐条核对）。导出统一 DartPdf 并内嵌打包 OFL 子集字体（中英），解决中文乱码。
+
+- 2026-10-07 v0.6.0 §3.7 生成架构：改为 **Plan→Rewrite→Validate**。Plan（`planSystemPrompt`）只输出结构化 `TailorPlan`（决策/淘汰理由/排序/预算/ATS 关键词/追问）；Rewrite（`rewriteSystemPrompt`）只做表达、只准引用 facts；Validate（`ExportService._validateAndFix`）做事实守恒（数字⊆原始素材）、删除项清退、bullet 上限。新增 `target_level/career_stage/track` 输入与「先追问再生成」交互；提示词精简、关键指令置首尾。

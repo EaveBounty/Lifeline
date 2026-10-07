@@ -208,7 +208,7 @@ class AiService {
         'research_digest': researchDigest,
     };
     final messages = <LlmMessage>[
-      LlmMessage.text('system', tailorSystemPrompt),
+      LlmMessage.text('system', rewriteSystemPrompt),
       LlmMessage.text(
         'user',
         '【待处理数据开始】\n${jsonEncode(payload)}\n【待处理数据结束】',

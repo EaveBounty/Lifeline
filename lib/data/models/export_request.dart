@@ -28,6 +28,15 @@ class ExportRequest {
   /// 简历模板 id（见 `services/render/templates.dart`）。
   final String templateId;
 
+  /// 目标级别（校招/初/中/高/资深/管理）——用于级别校准。
+  final String targetLevel;
+
+  /// 职业阶段（在校/初期/中期/资深/管理/转行）。
+  final String careerStage;
+
+  /// 赛道（技术/金融/咨询/学术/央国企/设计/运营/通用）——用于权重与侧重。
+  final String track;
+
   const ExportRequest({
     this.purpose = '求职',
     this.targetRole = '',
@@ -45,6 +54,9 @@ class ExportRequest {
     this.appendixEnabled = false,
     this.extraNotes = '',
     this.templateId = 'ats-classic',
+    this.targetLevel = 'mid',
+    this.careerStage = 'early',
+    this.track = 'general',
   });
 
   ExportRequest copyWith({
@@ -64,6 +76,9 @@ class ExportRequest {
     bool? appendixEnabled,
     String? extraNotes,
     String? templateId,
+    String? targetLevel,
+    String? careerStage,
+    String? track,
   }) =>
       ExportRequest(
         purpose: purpose ?? this.purpose,
@@ -82,6 +97,9 @@ class ExportRequest {
         appendixEnabled: appendixEnabled ?? this.appendixEnabled,
         extraNotes: extraNotes ?? this.extraNotes,
         templateId: templateId ?? this.templateId,
+        targetLevel: targetLevel ?? this.targetLevel,
+        careerStage: careerStage ?? this.careerStage,
+        track: track ?? this.track,
       );
 
   Map<String, dynamic> toJson() => {
@@ -101,6 +119,9 @@ class ExportRequest {
         'appendix_enabled': appendixEnabled,
         'extra_notes': extraNotes,
         'template_id': templateId,
+        'target_level': targetLevel,
+        'career_stage': careerStage,
+        'track': track,
       };
 
   factory ExportRequest.fromJson(Map<String, dynamic> j) => ExportRequest(
@@ -120,6 +141,9 @@ class ExportRequest {
         appendixEnabled: (j['appendix_enabled'] ?? false) as bool,
         extraNotes: (j['extra_notes'] ?? '') as String,
         templateId: (j['template_id'] ?? 'ats-classic') as String,
+        targetLevel: (j['target_level'] ?? 'mid') as String,
+        careerStage: (j['career_stage'] ?? 'early') as String,
+        track: (j['track'] ?? 'general') as String,
       );
 }
 

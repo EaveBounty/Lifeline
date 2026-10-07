@@ -16,6 +16,7 @@ import '../../core/result.dart';
 import '../../data/models/export_request.dart';
 import '../../data/models/resume_doc.dart';
 import '../../data/models/resume_eval.dart';
+import '../../data/models/tailor_plan.dart';
 import '../../data/repositories/resume_repository.dart';
 import '../ai/llm_client.dart';
 import '../ai/prompts.dart';
@@ -42,6 +43,8 @@ class ExportService {
   static const List<String> _defaultFormats = ['pdf', 'docx', 'md'];
 
   /// 生成定向简历并登记；[existingMeta] 非空时**更新同一份**（复用 id/创建时间）。
+  ///
+  /// [plan] 可空：为空时先调用 [makePlan]；[answers] 为用户对追问的回答。
   Future<Result<ResumeMeta>> generate({
     required ResumeDocument full,
     required ExportRequest request,
@@ -50,6 +53,8 @@ class ExportService {
     required String apiKey,
     required String model,
     ResumeMeta? existingMeta,
+    TailorPlan? plan,
+    List<String> answers = const [],
     void Function(String stage)? onStage,
   }) async {
     if (syncRoot.trim().isEmpty) {
@@ -75,18 +80,33 @@ class ExportService {
       }
     }
 
-    // b) 定向裁剪（失败退回完整简历）。
-    onStage?.call('定向裁剪');
-    var tailored = await _tailor(
-      full: full,
-      request: request,
-      digest: digest,
-      baseUrl: baseUrl,
-      apiKey: apiKey,
-      model: model,
-    );
-    tailored ??= full;
+    // b) 计划（取舍）→ 改写（表达）→ 确定性校验。
+    var effectivePlan = plan;
+    if (effectivePlan == null) {
+      onStage?.call('制定取舍计划');
+      final pr = await makePlan(
+        full: full,
+        request: request,
+        digest: digest,
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+        model: model,
+      );
+      effectivePlan = pr.valueOrNull ?? _fallbackPlan(full, request);
+    }
+    onStage?.call('按计划改写');
+    var tailored = await _rewriteWithPlan(
+          full: full,
+          plan: effectivePlan,
+          request: request,
+          answers: answers,
+          baseUrl: baseUrl,
+          apiKey: apiKey,
+          model: model,
+        ) ??
+        full;
     tailored = _enforceExclude(tailored, request.exclude);
+    tailored = _validateAndFix(tailored, full, effectivePlan, request);
     tailored = _withAppendix(tailored, full, request);
 
     // c) 渲染并保存。
@@ -333,8 +353,8 @@ class ExportService {
     );
   }
 
-  /// 调用 LLM 裁剪；任何解析/校验失败返回 null（调用方退回 full）。
-  Future<ResumeDocument?> _tailor({
+  /// 第一步：制定取舍计划（不写正文）。失败由调用方回退到 [_fallbackPlan]。
+  Future<Result<TailorPlan>> makePlan({
     required ResumeDocument full,
     required ExportRequest request,
     String? digest,
@@ -342,8 +362,9 @@ class ExportService {
     required String apiKey,
     required String model,
   }) async {
+    final facts = _factsOf(full);
     final user = StringBuffer()
-      ..writeln('目标岗位要求 (导出要求 JSON)：')
+      ..writeln('目标要求(导出要求 JSON)：')
       ..writeln(jsonEncode(request.toJson()));
     if ((digest ?? '').trim().isNotEmpty) {
       user
@@ -353,25 +374,105 @@ class ExportService {
     }
     user
       ..writeln()
-      ..writeln('候选人全量履历 (ResumeDocument JSON)：')
-      ..writeln(jsonEncode(full.toJson()))
+      ..writeln('候选人素材 facts(JSON)：')
+      ..writeln(jsonEncode(facts));
+    final res = await llm.chatCompletion(
+      baseUrl: baseUrl,
+      apiKey: apiKey,
+      model: model,
+      jsonMode: true,
+      messages: [
+        LlmMessage.text('system', planSystemPrompt),
+        LlmMessage.text('user', user.toString()),
+      ],
+    );
+    if (res.isErr) return Err(res.errorMessage!);
+    try {
+      final decoded = jsonDecode(extractJsonBlock(res.valueOrNull!));
+      if (decoded is! Map) return const Err('计划未返回 JSON 对象');
+      var m = decoded.cast<String, dynamic>();
+      final inner = m['plan'];
+      if (inner is Map) m = inner.cast<String, dynamic>();
+      return Ok(TailorPlan.fromJson(m));
+    } catch (e) {
+      return Err('解析计划失败：$e', e);
+    }
+  }
+
+  /// 无 AI 计划时的兜底：全部保留、按分类顺序。
+  TailorPlan _fallbackPlan(ResumeDocument full, ExportRequest request) {
+    final decisions = <PlanDecision>[];
+    for (final s in full.sections) {
+      for (final i in s.items) {
+        decisions.add(PlanDecision(
+          sourceRecordId: i.sourceRecordId,
+          itemId: i.id,
+          decision: 'keep',
+          bulletCap: 3,
+          reason: '默认保留',
+        ));
+      }
+    }
+    return TailorPlan(
+      role: request.targetRole,
+      level: request.targetLevel,
+      track: request.track,
+      pageLimit: request.pageLimit,
+      decisions: decisions,
+      minCoverage: 0.6,
+    );
+  }
+
+  /// 第二步：按计划改写（只表达，不新增事实）。
+  Future<ResumeDocument?> _rewriteWithPlan({
+    required ResumeDocument full,
+    required TailorPlan plan,
+    required ExportRequest request,
+    required List<String> answers,
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+  }) async {
+    final facts = _factsOf(full);
+    final selected = _selectedItems(full, plan);
+    final user = StringBuffer()
+      ..writeln('选材计划 (TailorPlan JSON)：')
+      ..writeln(jsonEncode(plan.toJson()))
       ..writeln()
-      ..writeln('请输出这份候选人针对上述目标的**成品级**定向简历 JSON。');
+      ..writeln('目标要求 (导出要求 JSON)：')
+      ..writeln(jsonEncode(request.toJson()))
+      ..writeln()
+      ..writeln('可用的候选人素材 facts (JSON，**只准使用这些事实**)：')
+      ..writeln(jsonEncode({
+        'header': facts['header'],
+        'summary': facts['summary'],
+        'strengths': facts['strengths'],
+        'items': selected,
+      }));
+    if (answers.isNotEmpty) {
+      user
+        ..writeln()
+        ..writeln('用户补充回答：')
+        ..writeln(answers.join('\n'));
+    }
+    user
+      ..writeln()
+      ..writeln('请输出这份候选人针对上述目标的**成品级**定向简历 ResumeDocument JSON。');
 
     final res = await _rewrite(
-      system: tailorSystemPrompt,
+      system: rewriteSystemPrompt,
       user: user.toString(),
       baseUrl: baseUrl,
       apiKey: apiKey,
       model: model,
     );
     if (res.isErr) {
-      appLog.warning('定向裁剪失败，退回完整简历: ${res.errorMessage}');
+      appLog.warning('定向改写失败，退回完整简历: ${res.errorMessage}');
       return null;
     }
     final t = res.valueOrNull!;
     if (!_keyInfoKept(full, t, request)) {
-      appLog.warning('定向裁剪校验未通过（关键信息丢失），退回完整简历');
+      appLog.warning('改写校验未通过（关键信息丢失），退回完整简历');
       return null;
     }
     return ResumeDocument(
@@ -387,11 +488,144 @@ class ExportService {
           'role': request.targetRole,
           'company': request.targetCompany,
           'purpose': request.purpose,
+          'level': request.targetLevel,
+          'track': request.track,
         },
       },
       tailored: true,
       appendix: t.appendix,
     );
+  }
+
+  /// 结构化素材（带来源 id），作为「只准引用这些事实」的边界。
+  Map<String, dynamic> _factsOf(ResumeDocument full) {
+    final items = <Map<String, dynamic>>[];
+    for (final s in full.sections) {
+      for (final i in s.items) {
+        items.add({
+          'source_record_id': i.sourceRecordId,
+          'title': i.title,
+          'subtitle': i.subtitle,
+          'meta': i.meta,
+          'description': i.description,
+          'bullets': i.bullets,
+          'fields': i.fields,
+          'tags': i.tags,
+          'links': [for (final l in i.links) l.toJson()],
+          'attachments': i.attachments,
+        });
+      }
+    }
+    return {
+      'header': full.header.toJson(),
+      'summary': full.summary,
+      'strengths': full.strengths,
+      'items': items,
+    };
+  }
+
+  /// 按计划筛选出「入选」素材（附 decision / bullet_cap 供模型遵循）。
+  List<Map<String, dynamic>> _selectedItems(
+    ResumeDocument full,
+    TailorPlan plan,
+  ) {
+    final byId = <String, PlanDecision>{};
+    for (final d in plan.decisions) {
+      final key = d.sourceRecordId ?? d.itemId;
+      if (key != null && key.isNotEmpty) byId[key] = d;
+    }
+    final out = <Map<String, dynamic>>[];
+    for (final s in full.sections) {
+      for (final i in s.items) {
+        final d = byId[i.sourceRecordId ?? i.id];
+        if (d != null && d.decision == 'delete') continue;
+        out.add({
+          'source_record_id': i.sourceRecordId,
+          'title': i.title,
+          'subtitle': i.subtitle,
+          'meta': i.meta,
+          'description': i.description,
+          'bullets': i.bullets,
+          'fields': i.fields,
+          'tags': i.tags,
+          'links': [for (final l in i.links) l.toJson()],
+          'attachments': i.attachments,
+          'decision': d?.decision ?? 'keep',
+          'bullet_cap': d?.bulletCap ?? 3,
+          'verb_class': d?.verbClass ?? 'L3',
+        });
+      }
+    }
+    return out;
+  }
+
+  /// 第三步：确定性校验并修正（事实守恒 / 删除项 / bullet 上限）。
+  ResumeDocument _validateAndFix(
+    ResumeDocument doc,
+    ResumeDocument full,
+    TailorPlan plan,
+    ExportRequest request,
+  ) {
+    final allowed = _numbersOf(jsonEncode(_factsOf(full)));
+    final deleted = <String>{
+      for (final d in plan.decisions)
+        if (d.decision == 'delete' && (d.sourceRecordId ?? '').isNotEmpty)
+          d.sourceRecordId!,
+    };
+    final caps = <String, int>{};
+    for (final d in plan.decisions) {
+      final key = d.sourceRecordId ?? d.itemId;
+      if (key != null) caps[key] = d.bulletCap;
+    }
+
+    bool safe(String bullet) => _numbersOf(bullet).every(allowed.contains);
+
+    final sections = <ResumeSection>[];
+    for (final s in doc.sections) {
+      final items = <ResumeItem>[];
+      for (final it in s.items) {
+        final key = it.sourceRecordId ?? it.id;
+        if (deleted.contains(key)) continue;
+        final cap = caps[key] ?? 3;
+        final bullets = <String>[];
+        for (final b in it.bullets) {
+          if (bullets.length >= cap) break;
+          if (!safe(b)) {
+            appLog.warning('丢弃含未证实数字的 bullet: $b');
+            continue;
+          }
+          bullets.add(b);
+        }
+        items.add(it.copyWith(bullets: bullets));
+      }
+      if (items.isEmpty) continue;
+      sections.add(ResumeSection(
+        key: s.key,
+        title: s.title,
+        order: s.order,
+        items: items,
+      ));
+    }
+    return ResumeDocument(
+      header: doc.header,
+      summary: doc.summary,
+      strengths: doc.strengths,
+      sections: sections,
+      generatedAt: doc.generatedAt,
+      language: doc.language,
+      meta: doc.meta,
+      tailored: doc.tailored,
+      appendix: doc.appendix,
+    );
+  }
+
+  /// 抽取文本中的数字集合（去千分位），用于事实守恒校验。
+  Set<String> _numbersOf(String text) {
+    final out = <String>{};
+    for (final m in RegExp(r'\d[\d,]*').allMatches(text)) {
+      out.add(m.group(0)!.replaceAll(',', ''));
+    }
+    return out;
   }
 
   /// 通用「系统提示 + 用户负载 → ResumeDocument」调用（裁剪/修订共用）。
