@@ -15,9 +15,12 @@ import '../../data/models/profile_record.dart';
 import '../../data/models/record_category.dart';
 import '../../data/providers.dart';
 import '../../services/secrets/vault_providers.dart';
+import '../../services/update/update_providers.dart';
+import '../../services/update/update_service.dart';
+import '../update/update_dialog.dart';
 
 /// 版本号：与 pubspec.yaml 的 version 保持一致（未引入 package_info_plus）。
-const String _appVersion = '0.4.2+6';
+const String _appVersion = '0.5.0+7';
 const String _githubUrl = 'https://github.com/EaveBounty/Lifeline';
 const String _license = 'PolyForm Noncommercial 1.0.0';
 
@@ -30,6 +33,29 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _rebuilding = false;
+  bool _autoCheckUpdate = true;
+  bool _checkingUpdate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    UpdatePrefs.autoCheckEnabled().then((v) {
+      if (mounted) setState(() => _autoCheckUpdate = v);
+    });
+  }
+
+  Future<void> _manualCheckUpdate() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _checkingUpdate = true);
+    final info = await checkForUpdate(ignoreSkip: true);
+    if (!mounted) return;
+    setState(() => _checkingUpdate = false);
+    if (info == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('当前已是最新版本。')));
+      return;
+    }
+    await showUpdateDialog(context, info);
+  }
 
   Future<void> _save(AppSettings settings) =>
       ref.read(settingsProvider.notifier).save(settings);
@@ -418,6 +444,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _aboutRow('版本', _appVersion),
           _aboutRow('许可', _license),
           _aboutRow('版权', AppInfo.authorZh),
+          const SizedBox(height: 6),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('启动时自动检查更新'),
+            value: _autoCheckUpdate,
+            onChanged: (v) {
+              setState(() => _autoCheckUpdate = v);
+              UpdatePrefs.setAutoCheck(v);
+            },
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed: _checkingUpdate ? null : _manualCheckUpdate,
+              icon: _checkingUpdate
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.system_update_alt),
+              label: Text(_checkingUpdate ? '检查中…' : '检查更新'),
+            ),
+          ),
           const SizedBox(height: 6),
           InkWell(
             onTap: () => _openExternal(_githubUrl),

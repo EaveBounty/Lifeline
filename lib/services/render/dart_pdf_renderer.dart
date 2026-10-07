@@ -1,24 +1,24 @@
-/// PDF 渲染器（纯 Dart，全平台兜底）。
+/// PDF 渲染器（纯 Dart，全平台主力）。
 ///
-/// 依据 [ResumeTemplate.layout] 实现多种版式：single / two-column / academic
-/// / creative / compact；elegant、mono 等映射到最接近的版式。尽量内嵌 CJK
-/// 字体，失败则用内置 Helvetica 兜底并记录告警（见 [lastNotice]）。
+/// 内嵌打包的 OFL 中英子集字体（按版式选衬线/无衬线），彻底避免中文乱码；
+/// 依据 [ResumeTemplate.layout] 实现 single / two-column / academic / creative
+/// / compact 版式；渲染条目 `fields`/`links`，并在需要时追加「参考材料附录」页。
 library;
 
+import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/constants.dart';
+import '../../core/platform/io_platform.dart';
 import '../../core/result.dart';
 import '../../data/models/resume_doc.dart';
-import 'font_resolver.dart';
 import 'renderer.dart';
+import 'resume_fonts.dart';
 import 'templates.dart';
 
 class DartPdfRenderer extends ResumeRenderer {
-  DartPdfRenderer({FontResolver? fontResolver, this.templateId})
-      : _resolver = fontResolver ?? FontResolver();
-
-  final FontResolver _resolver;
+  DartPdfRenderer({this.templateId});
 
   /// 默认模板 id；可被 `options['templateId']` 覆盖。
   final String? templateId;
@@ -39,31 +39,61 @@ class DartPdfRenderer extends ResumeRenderer {
     ResumeDocument doc, {
     Map<String, dynamic> options = const {},
   }) async {
-    final font = await _resolver.resolveCjk();
-    final needsCjk = RenderText.hasCjk(RenderText.allText(doc));
+    final template = ResumeTemplates.byId(
+      (options['templateId'] as String?) ?? templateId,
+    );
+    final fonts = await ResumeFontLoader().load(serif: _isSerif(template));
+    final images = await _preloadImages(doc, options['syncRoot'] as String?);
 
     try {
-      final bytes = await _build(doc, font, options);
-      _lastNotice = _notice(font, needsCjk);
+      final bytes = await _build(doc, template, fonts, options, images);
+      _lastNotice = fonts.embedded
+          ? 'PDF 已内嵌字体：${fonts.source}'
+          : '未找到中文字体，已回退内置 Helvetica，中文可能缺字。';
       return Ok(bytes);
-    } catch (_) {
-      // 字体嵌入导致失败：退到内置拉丁字体。
+    } catch (e) {
+      // 字体嵌入等异常：退回内置拉丁字体，尽量出图。
       try {
-        final bytes = await _build(doc, ResolvedFont.none, options);
-        _lastNotice = font.found
-            ? 'CJK 字体嵌入失败，已回退内置字体；中文可能缺字。'
-            : _notice(font, needsCjk);
+        final fallback = ResumeFonts(
+          regular: pw.Font.helvetica(),
+          bold: pw.Font.helveticaBold(),
+          source: 'helvetica',
+        );
+        final bytes = await _build(doc, template, fallback, options, images);
+        _lastNotice = '字体嵌入失败，已回退内置字体；中文可能缺字。';
         return Ok(bytes);
-      } catch (e) {
-        return Err('PDF 渲染失败: $e', e);
+      } catch (e2) {
+        return Err('PDF 渲染失败: $e2', e2);
       }
     }
   }
 
-  String _notice(ResolvedFont font, bool needsCjk) {
-    if (font.found) return 'PDF 已内嵌字体：${font.source}';
-    if (needsCjk) return '未找到 CJK 字体，已用内置 Helvetica 兜底，中文可能缺字。';
-    return 'PDF 使用内置拉丁字体。';
+  bool _isSerif(ResumeTemplate t) =>
+      t.id == 'elegant-serif' ||
+      t.id == 'academic-cv' ||
+      t.layout == 'academic' ||
+      t.layout == 'elegant';
+
+  /// 预加载附录图片（相对同步根），避免在同步的 build 回调中做 IO。
+  Future<Map<String, pw.MemoryImage>> _preloadImages(
+    ResumeDocument doc,
+    String? syncRoot,
+  ) async {
+    final out = <String, pw.MemoryImage>{};
+    if (syncRoot == null) return out;
+    for (final entry in doc.appendix) {
+      for (final rel in entry.materials) {
+        if (!AttachmentTypes.isImage(rel)) continue;
+        try {
+          final file = File(p.join(syncRoot, rel));
+          if (!await file.exists()) continue;
+          out[rel] = pw.MemoryImage(await file.readAsBytes());
+        } catch (_) {
+          // 忽略无法读取的图片。
+        }
+      }
+    }
+    return out;
   }
 
   /// 版式归一化：未知/优雅/极简映射到最接近的版式。
@@ -77,21 +107,28 @@ class DartPdfRenderer extends ResumeRenderer {
 
   Future<List<int>> _build(
     ResumeDocument doc,
-    ResolvedFont font,
+    ResumeTemplate template,
+    ResumeFonts fonts,
     Map<String, dynamic> options,
+    Map<String, pw.MemoryImage> images,
   ) async {
-    final template = ResumeTemplates.byId(
-      (options['templateId'] as String?) ?? templateId,
-    );
     final layout = _layoutOf(template.layout);
     final accent = PdfColor.fromInt(template.accentArgb);
-    final base = font.found ? pw.Font.ttf(font.data!) : pw.Font.helvetica();
-    final theme = pw.ThemeData.withFont(base: base, bold: base);
+    final theme = pw.ThemeData.withFont(
+      base: fonts.regular,
+      bold: fonts.bold,
+      fontFallback: fonts.fallback.isEmpty ? null : fonts.fallback,
+    );
 
     final pageLimit = (options['pageLimit'] as num?)?.toInt() ?? 0;
     final compact = layout == 'compact' || pageLimit == 1;
     final size = compact ? 9.0 : 10.0;
-    final st = _Styles(base: base, size: size, accent: accent);
+    final st = _Styles(
+      reg: fonts.regular,
+      bld: fonts.bold,
+      size: size,
+      accent: accent,
+    );
 
     final pdf = pw.Document(
       theme: theme,
@@ -105,7 +142,6 @@ class DartPdfRenderer extends ResumeRenderer {
 
     switch (layout) {
       case 'two-column':
-        // 仅当内容较小时用双栏，避免跨页无法拆分导致排版异常。
         if (_bulk(doc) <= 26) {
           content.addAll(_twoColumn(doc, sections, st));
         } else {
@@ -136,8 +172,73 @@ class DartPdfRenderer extends ResumeRenderer {
       ),
     );
 
+    if (doc.appendix.isNotEmpty) {
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: pw.EdgeInsets.fromLTRB(42, 40, 42, 42),
+          footer: (ctx) => pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text('附录 · 第 ${ctx.pageNumber} 页', style: st.small),
+          ),
+          build: (_) => _appendixBlock(doc, st, images),
+        ),
+      );
+    }
+
     final data = await pdf.save();
     return data.toList();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 参考材料附录
+  // ---------------------------------------------------------------------------
+
+  List<pw.Widget> _appendixBlock(
+    ResumeDocument doc,
+    _Styles st,
+    Map<String, pw.MemoryImage> images,
+  ) {
+    final en = doc.language == 'en';
+    final out = <pw.Widget>[
+      _sectionTitle(en ? 'Appendix · Supporting Materials' : '附录 · 参考材料',
+          st, _TitleStyle.underline),
+      pw.SizedBox(height: 4),
+      pw.Text(
+        en
+            ? 'Materials below support the claims marked [A-x] in the resume.'
+            : '以下材料用于佐证简历中以〔A-x〕标注的经历/声称。',
+        style: st.small,
+      ),
+    ];
+    for (final entry in doc.appendix) {
+      out.add(pw.SizedBox(height: 10));
+      out.add(pw.Text('[${entry.label}] ${entry.title}', style: st.bold));
+      if ((entry.note ?? '').trim().isNotEmpty) {
+        out.add(pw.Text(entry.note!.trim(), style: st.small));
+      }
+      if (entry.materials.isEmpty) {
+        out.add(pw.Text(en ? '(no material)' : '（暂无可附材料）', style: st.small));
+        continue;
+      }
+      for (final rel in entry.materials) {
+        final img = images[rel];
+        if (img != null) {
+          out.add(pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 4),
+            child: pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              child: pw.Image(img, height: 190, fit: pw.BoxFit.contain),
+            ),
+          ));
+          out.add(pw.Text(p.basename(rel), style: st.small));
+        } else {
+          out.add(pw.Text('• ${p.basename(rel)}'
+              '${en ? ' (file)' : '（非图片，见文件）'}', style: st.small));
+        }
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -255,7 +356,7 @@ class DartPdfRenderer extends ResumeRenderer {
       children: [
         pw.Text(_name(doc),
             style: pw.TextStyle(
-              font: st.base,
+              font: st.bld,
               fontSize: st.nameSize,
               fontWeight: pw.FontWeight.bold,
               color: st.accent,
@@ -283,7 +384,7 @@ class DartPdfRenderer extends ResumeRenderer {
         pw.Text(_name(doc),
             textAlign: pw.TextAlign.center,
             style: pw.TextStyle(
-              font: st.base,
+              font: st.bld,
               fontSize: st.nameSize,
               fontWeight: pw.FontWeight.bold,
             )),
@@ -304,7 +405,7 @@ class DartPdfRenderer extends ResumeRenderer {
   pw.Widget _headerBand(ResumeDocument doc, _Styles st) {
     final h = doc.header;
     final onAccent = pw.TextStyle(
-      font: st.base,
+      font: st.reg,
       color: PdfColors.white,
       fontSize: st.size,
     );
@@ -320,7 +421,7 @@ class DartPdfRenderer extends ResumeRenderer {
         children: [
           pw.Text(_name(doc),
               style: pw.TextStyle(
-                font: st.base,
+                font: st.bld,
                 fontSize: st.nameSize + 1,
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.white,
@@ -349,7 +450,7 @@ class DartPdfRenderer extends ResumeRenderer {
           children: [
             pw.Text(_name(doc),
                 style: pw.TextStyle(
-                  font: st.base,
+                  font: st.bld,
                   fontSize: st.nameSize - 3,
                   fontWeight: pw.FontWeight.bold,
                   color: st.accent,
@@ -448,12 +549,23 @@ class DartPdfRenderer extends ResumeRenderer {
     final meta = (item.meta ?? '').trim();
     final subtitle = (item.subtitle ?? '').trim();
     final desc = (item.description ?? '').trim();
+    final refSuffix =
+        item.appendixRefs.isEmpty ? '' : '  〔见附录 ${item.appendixRefs.join(', ')}〕';
+    final fieldLine = item.fields.entries
+        .where((e) => '${e.value}'.trim().isNotEmpty)
+        .map((e) => '${e.key}: ${e.value}')
+        .join('  ·  ');
+    final linkLine = item.links
+        .map((l) => l.label.trim().isEmpty ? l.url : '${l.label}: ${l.url}')
+        .join('  ·  ');
     final column = pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(meta.isEmpty ? item.title : '${item.title}  ·  $meta',
+        pw.Text('${item.title}${meta.isEmpty ? '' : '  ·  $meta'}$refSuffix',
             style: st.bold),
         if (subtitle.isNotEmpty) pw.Text(subtitle, style: st.small),
+        if (fieldLine.isNotEmpty)
+          pw.Text(fieldLine, style: st.small.copyWith(color: st.accent)),
         if (desc.isNotEmpty) pw.Text(desc, style: st.normal),
         if (item.bullets.isNotEmpty) ...[
           pw.SizedBox(height: 2),
@@ -464,6 +576,7 @@ class DartPdfRenderer extends ResumeRenderer {
               bulletSize: st.size * 0.4,
             ),
         ],
+        if (linkLine.isNotEmpty) pw.Text(linkLine, style: st.small),
         if (item.tags.isNotEmpty)
           pw.Text(item.tags.join('  '),
               style: st.small.copyWith(color: st.accent)),
@@ -492,7 +605,6 @@ class DartPdfRenderer extends ResumeRenderer {
   // 体量估算
   // ---------------------------------------------------------------------------
 
-  /// 粗略估算正文体量（条目 + bullet 数），用于双栏安全判断。
   int _bulk(ResumeDocument doc) {
     var n = 0;
     for (final s in doc.sections) {
@@ -519,9 +631,15 @@ enum _TitleStyle { underline, bar, centered, plain }
 enum _ItemVariant { plain, bordered }
 
 class _Styles {
-  _Styles({required this.base, required this.size, required this.accent});
+  _Styles({
+    required this.reg,
+    required this.bld,
+    required this.size,
+    required this.accent,
+  });
 
-  final pw.Font base;
+  final pw.Font reg;
+  final pw.Font bld;
   final double size;
   final PdfColor accent;
 
@@ -530,16 +648,16 @@ class _Styles {
   double get nameSize => compact ? 17 : 22;
 
   pw.TextStyle get normal =>
-      pw.TextStyle(font: base, fontSize: size, lineSpacing: compact ? 1.6 : 2.5);
+      pw.TextStyle(font: reg, fontSize: size, lineSpacing: compact ? 1.6 : 2.5);
   pw.TextStyle get small =>
-      pw.TextStyle(font: base, fontSize: size - 1.0, lineSpacing: compact ? 1.2 : 2);
+      pw.TextStyle(font: reg, fontSize: size - 1.0, lineSpacing: compact ? 1.2 : 2);
   pw.TextStyle get bold => pw.TextStyle(
-        font: base,
+        font: bld,
         fontSize: size,
         fontWeight: pw.FontWeight.bold,
       );
   pw.TextStyle get title => pw.TextStyle(
-        font: base,
+        font: bld,
         fontSize: titleSize,
         fontWeight: pw.FontWeight.bold,
       );

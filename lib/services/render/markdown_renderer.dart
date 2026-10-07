@@ -82,18 +82,41 @@ class MarkdownRenderer extends ResumeRenderer {
       }
     }
 
+    if (doc.appendix.isNotEmpty) {
+      b.writeln();
+      b.writeln('## 附录 · 参考材料');
+      for (final entry in doc.appendix) {
+        b.writeln();
+        b.writeln('**[${entry.label}] ${entry.title}**');
+        if ((entry.note ?? '').trim().isNotEmpty) b.writeln(entry.note!.trim());
+        for (final rel in entry.materials) {
+          b.writeln('- `$rel`');
+        }
+      }
+    }
+
     return b.toString();
   }
 
   void _writeItem(StringBuffer b, ResumeItem item) {
     final title = item.title.trim();
     final meta = (item.meta ?? '').trim();
+    final refs = item.appendixRefs.isEmpty
+        ? ''
+        : '  〔见附录 ${item.appendixRefs.join(', ')}〕';
     b.write('### $title');
     if (meta.isNotEmpty) b.write('  ·  $meta');
+    b.write(refs);
     b.writeln();
 
     final subtitle = (item.subtitle ?? '').trim();
     if (subtitle.isNotEmpty) b.writeln('*$subtitle*');
+
+    final fieldLine = item.fields.entries
+        .where((e) => '${e.value}'.trim().isNotEmpty)
+        .map((e) => '${e.key}: ${e.value}')
+        .join('  ·  ');
+    if (fieldLine.isNotEmpty) b.writeln('`$fieldLine`');
 
     final desc = (item.description ?? '').trim();
     if (desc.isNotEmpty) {
@@ -106,6 +129,15 @@ class MarkdownRenderer extends ResumeRenderer {
       for (final bullet in item.bullets) {
         b.writeln('- ${bullet.trim()}');
       }
+    }
+
+    if (item.links.isNotEmpty) {
+      b.writeln();
+      b.writeln(item.links
+          .map((l) => l.label.trim().isEmpty
+              ? '[${l.url}](${l.url})'
+              : '[${l.label}](${l.url})')
+          .join(' · '));
     }
 
     if (item.tags.isNotEmpty) {

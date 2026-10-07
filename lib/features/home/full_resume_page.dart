@@ -9,12 +9,41 @@ import '../../core/constants.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/resume_doc.dart';
 import '../../data/providers.dart';
+import '../../services/update/update_providers.dart';
+import '../../services/update/update_service.dart';
+import '../update/update_dialog.dart';
 
-class FullResumePage extends ConsumerWidget {
+class FullResumePage extends ConsumerStatefulWidget {
   const FullResumePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FullResumePage> createState() => _FullResumePageState();
+}
+
+class _FullResumePageState extends ConsumerState<FullResumePage> {
+  bool _updateChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeCheckUpdate());
+  }
+
+  Future<void> _maybeCheckUpdate() async {
+    if (_updateChecked) return;
+    _updateChecked = true;
+    try {
+      if (!await UpdatePrefs.autoCheckEnabled()) return;
+      final info = await checkForUpdate();
+      if (info == null || !mounted) return;
+      await showUpdateDialog(context, info);
+    } catch (_) {
+      // 检查失败静默。
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final doc = ref.watch(fullResumeProvider);
     final profileAsync = ref.watch(profileProvider);
 

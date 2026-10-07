@@ -11,6 +11,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/ai_provider.dart';
 import '../../data/providers.dart';
 import '../../services/secrets/secret_store.dart';
+import '../../services/secrets/vault_providers.dart';
 
 class AiSettingsPage extends ConsumerStatefulWidget {
   const AiSettingsPage({super.key});
@@ -238,6 +239,8 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                     _fallbackWarning(context),
                     const SizedBox(height: 4),
                   ],
+                  _vaultSyncBanner(context),
+                  const SizedBox(height: 4),
                   SectionCard(
                     title: '模型厂商',
                     icon: Icons.hub_outlined,
@@ -312,6 +315,55 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                 '系统密钥库不可用，密钥已降级保存到本地权限文件。'
                 '该文件不同步、但保护强度较低；建议安装 libsecret / gnome-keyring 后重新保存密钥。',
                 style: TextStyle(color: scheme.onErrorContainer, height: 1.45),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 未创建密钥保险库时，明确告知密钥不会跨设备同步，并提供创建入口。
+  Widget _vaultSyncBanner(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final status = ref.watch(vaultStatusProvider).value;
+    if (status?.exists ?? false) return const SizedBox.shrink();
+    return Card(
+      color: scheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.sync_disabled, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '密钥目前仅保存在本机，不会跨设备同步',
+                    style: TextStyle(
+                      color: scheme.onTertiaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '要让 API Key 随同步根在多设备间共享，请创建「密钥保险库」并设置口令，'
+                    '密钥将加密存入 `.lifeline/vault.dat`。',
+                    style: TextStyle(color: scheme.onTertiaryContainer, height: 1.45),
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      onPressed: () => context.push('/settings/vault'),
+                      icon: const Icon(Icons.shield_outlined),
+                      label: const Text('创建密钥保险库'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

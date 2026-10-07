@@ -16,7 +16,10 @@ import '../../services/render/templates.dart';
 import 'template_preview.dart';
 
 class ExportPage extends ConsumerStatefulWidget {
-  const ExportPage({super.key});
+  const ExportPage({super.key, this.existing});
+
+  /// 非空表示「重新生成/更新」同一份简历（回填问卷并复用其 id）。
+  final ResumeMeta? existing;
 
   @override
   ConsumerState<ExportPage> createState() => _ExportPageState();
@@ -30,6 +33,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   final _mustInclude = TextEditingController();
   final _exclude = TextEditingController();
   final _notes = TextEditingController();
+  final _jd = TextEditingController();
 
   String _purpose = '求职';
   int _pageLimit = 1;
@@ -37,6 +41,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   String _style = 'concise';
   String _tone = 'professional';
   bool _research = true;
+  bool _appendix = false;
 
   /// 当前模板；用户手动选择后不再被岗位推荐覆盖。
   String _templateId = ResumeTemplates.defaultId;
@@ -44,6 +49,31 @@ class _ExportPageState extends ConsumerState<ExportPage> {
 
   bool _busy = false;
   String? _stage;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.existing?.request;
+    if (r != null) {
+      _role.text = r.targetRole;
+      _company.text = r.targetCompany;
+      _industry.text = r.industry;
+      _emphasis.text = r.emphasis;
+      _mustInclude.text = r.mustInclude.join('，');
+      _exclude.text = r.exclude.join('，');
+      _notes.text = r.extraNotes;
+      _jd.text = r.jobDescription;
+      _purpose = r.purpose;
+      _pageLimit = r.pageLimit;
+      _language = r.language;
+      _style = r.style;
+      _tone = r.tone;
+      _research = r.researchEnabled;
+      _appendix = r.appendixEnabled;
+      _templateId = widget.existing?.templateId ?? r.templateId;
+      _templateTouched = true;
+    }
+  }
 
   @override
   void dispose() {
@@ -54,6 +84,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
     _mustInclude.dispose();
     _exclude.dispose();
     _notes.dispose();
+    _jd.dispose();
     super.dispose();
   }
 
@@ -108,6 +139,8 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       mustInclude: _list(_mustInclude.text),
       exclude: _list(_exclude.text),
       researchEnabled: _research,
+      jobDescription: _jd.text.trim(),
+      appendixEnabled: _appendix,
       extraNotes: _notes.text.trim(),
       templateId: _templateId,
     );
@@ -130,6 +163,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       baseUrl: provider.baseUrl,
       apiKey: apiKey.trim(),
       model: provider.model,
+      existingMeta: widget.existing,
       onStage: (stage) {
         if (mounted) setState(() => _stage = stage);
       },
@@ -211,7 +245,9 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('智能导出')),
+      appBar: AppBar(
+        title: Text(widget.existing == null ? '智能导出' : '更新定向简历'),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
@@ -316,6 +352,16 @@ class _ExportPageState extends ConsumerState<ExportPage> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      controller: _jd,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        labelText: '目标岗位 JD（可选，粘贴原文以做深度适配）',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
                       controller: _mustInclude,
                       maxLines: 3,
                       decoration: const InputDecoration(
@@ -339,6 +385,13 @@ class _ExportPageState extends ConsumerState<ExportPage> {
                       subtitle: const Text('联网/模型分析目标岗位关键词，用于裁剪'),
                       value: _research,
                       onChanged: (v) => setState(() => _research = v),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('附参考材料附录'),
+                      subtitle: const Text('把被选用经历的佐证材料排为附录页，并在正文交叉引用〔A-x〕'),
+                      value: _appendix,
+                      onChanged: (v) => setState(() => _appendix = v),
                     ),
                   ],
                 ),

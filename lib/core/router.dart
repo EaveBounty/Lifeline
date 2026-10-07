@@ -49,7 +49,13 @@ final GoRouter appRouter = GoRouter(
       builder: (_, __) => const SecretVaultPage(),
     ),
     GoRoute(path: '/capture', builder: (_, __) => const CapturePage()),
-    GoRoute(path: '/export', builder: (_, __) => const ExportPage()),
+    GoRoute(
+      path: '/export',
+      builder: (_, s) {
+        final meta = s.extra;
+        return ExportPage(existing: meta is ResumeMeta ? meta : null);
+      },
+    ),
     GoRoute(path: '/resumes', builder: (_, __) => const ResumeManagerPage()),
     GoRoute(
       path: '/resumes/eval',

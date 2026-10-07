@@ -1,9 +1,10 @@
-/// 简历库：查看/重新生成/编辑备注/删除定向简历。
+/// 简历库：预览 / 分享 / 打开 / 评估 / 按评估修订 / 重新生成 / 备注 / 删除。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/platform/io_platform.dart';
@@ -11,6 +12,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/export_request.dart';
 import '../../data/providers.dart';
 import '../../services/render/templates.dart';
+import 'resume_preview_page.dart';
 
 class ResumeManagerPage extends ConsumerWidget {
   const ResumeManagerPage({super.key});
@@ -79,6 +81,7 @@ class _ResumeTile extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ListTile(
         leading: Icon(_statusIcon(meta.status), color: theme.colorScheme.primary),
+        onTap: meta.files.containsKey('pdf') ? () => _preview(context, ref) : null,
         title: Row(
           children: [
             Expanded(
@@ -109,12 +112,18 @@ class _ResumeTile extends ConsumerWidget {
         trailing: PopupMenuButton<String>(
           onSelected: (action) => _onAction(context, ref, action),
           itemBuilder: (_) => [
+            if (meta.files.containsKey('pdf'))
+              const PopupMenuItem(value: 'preview', child: Text('预览 PDF')),
+            const PopupMenuItem(value: 'share', child: Text('分享')),
+            const PopupMenuItem(value: 'open', child: Text('用系统应用打开')),
+            const PopupMenuDivider(),
             PopupMenuItem(
               value: 'eval',
               child: Text(meta.evaluation == null ? '评估' : '查看评估'),
             ),
-            const PopupMenuItem(value: 'open', child: Text('打开所在目录')),
-            const PopupMenuItem(value: 'regen', child: Text('重新生成')),
+            const PopupMenuItem(value: 'revise', child: Text('按评估修订')),
+            const PopupMenuItem(value: 'regen', child: Text('重新生成（更新本份）')),
+            const PopupMenuDivider(),
             const PopupMenuItem(value: 'notes', child: Text('编辑备注')),
             const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
@@ -129,43 +138,74 @@ class _ResumeTile extends ConsumerWidget {
     String action,
   ) async {
     switch (action) {
-      case 'eval':
-        context.push('/resumes/eval', extra: meta);
-        break;
+      case 'preview':
+        return _preview(context, ref);
+      case 'share':
+        return _share(context, ref);
       case 'open':
-        await _reveal(context, ref);
-        break;
+        return _openFile(context, ref);
+      case 'eval':
+      case 'revise':
+        context.push('/resumes/eval', extra: meta);
+        return;
       case 'regen':
-        context.push('/export');
-        break;
+        context.push('/export', extra: meta);
+        return;
       case 'notes':
-        await _editNotes(context, ref);
-        break;
+        return _editNotes(context, ref);
       case 'delete':
-        await _confirmDelete(context, ref);
-        break;
+        return _confirmDelete(context, ref);
     }
   }
 
-  Future<void> _reveal(BuildContext context, WidgetRef ref) async {
+  File? _primaryFile(WidgetRef ref) {
+    final root = ref.read(syncRootProvider).path;
+    if (root == null || meta.files.isEmpty) return null;
+    final rel = meta.files['pdf'] ??
+        meta.files['docx'] ??
+        meta.files.values.first;
+    return File(p.join(root, rel));
+  }
+
+  Future<void> _preview(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     final root = ref.read(syncRootProvider).path;
-    final rel = meta.files.values.isEmpty ? null : meta.files.values.first;
+    final rel = meta.files['pdf'];
     if (root == null || rel == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('没有可预览的 PDF')));
+      return;
+    }
+    final file = File(p.join(root, rel));
+    if (!await file.exists()) {
+      messenger.showSnackBar(const SnackBar(content: Text('文件不存在，请重新生成')));
+      return;
+    }
+    if (!context.mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ResumePreviewPage(title: meta.name, file: file),
+    ));
+  }
+
+  Future<void> _share(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final file = _primaryFile(ref);
+    if (file == null || !await file.exists()) {
+      messenger.showSnackBar(const SnackBar(content: Text('没有可分享的文件')));
+      return;
+    }
+    await shareFile(file, text: meta.name);
+  }
+
+  Future<void> _openFile(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final file = _primaryFile(ref);
+    if (file == null || !await file.exists()) {
       messenger.showSnackBar(const SnackBar(content: Text('没有可打开的文件')));
       return;
     }
-    final dir = p.dirname(p.join(root, rel));
-    try {
-      if (Platform.isWindows) {
-        await Process.run('explorer', [dir]);
-      } else if (Platform.isMacOS) {
-        await Process.run('open', [dir]);
-      } else {
-        await Process.run('xdg-open', [dir]);
-      }
-    } catch (_) {
-      messenger.showSnackBar(SnackBar(content: Text('无法打开目录：$dir')));
+    final result = await OpenFilex.open(file.path);
+    if (result.type != ResultType.done) {
+      messenger.showSnackBar(SnackBar(content: Text('无法打开：${result.message}')));
     }
   }
 

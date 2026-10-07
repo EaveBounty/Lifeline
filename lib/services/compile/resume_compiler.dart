@@ -143,6 +143,9 @@ class ResumeCompiler {
       fields: record.fields,
       attachments: record.attachments,
       tags: record.tags,
+      links: [
+        for (final l in record.links) ResumeLink(label: l.label, url: l.url),
+      ],
       sourceRecordId: record.id,
       categorySlug: record.categorySlug,
       weight: 1.0,

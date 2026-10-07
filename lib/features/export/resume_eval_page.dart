@@ -14,6 +14,8 @@ import '../../data/models/resume_doc.dart';
 import '../../data/models/resume_eval.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/resume_repository.dart';
+import '../../services/ai/llm_client.dart';
+import '../../services/export/export_service.dart';
 import '../../services/export/resume_eval_providers.dart';
 
 class ResumeEvalPage extends ConsumerStatefulWidget {
@@ -32,10 +34,13 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
   ResumeEvaluation? _eval;
   bool _loading = true;
   bool _aiRunning = false;
+  bool _revising = false;
+  bool _checking = false;
   String? _error;
   int _tab = 0;
   final Set<String> _expanded = {};
   final Set<String> _doneActions = {};
+  List<MaterialCheck> _materialChecks = const [];
 
   @override
   void initState() {
@@ -76,6 +81,7 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
       _doc = spec;
       _request = request;
       _eval = _meta.evaluation ?? heuristic;
+      _materialChecks = _meta.materialChecks;
       _loading = false;
     });
   }
@@ -136,6 +142,123 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
       err: (msg, _) => messenger.showSnackBar(
         SnackBar(content: Text('AI 评估失败，保留当前结果：$msg')),
       ),
+    );
+  }
+
+  /// 解析默认 Provider 与密钥；不可用时引导配置并返回 null。
+  Future<(AiProvider, String)?> _resolveProvider() async {
+    final settings = ref.read(settingsProvider).value;
+    final providers = (settings?.providers ?? const <AiProvider>[])
+        .where((p) => p.enabled)
+        .toList();
+    if (providers.isEmpty) {
+      await _guideToAi('尚未配置任何 AI Provider。');
+      return null;
+    }
+    var provider = providers.first;
+    final defaultId = settings?.defaultAiProviderId;
+    if (defaultId != null) {
+      for (final p in providers) {
+        if (p.id == defaultId) {
+          provider = p;
+          break;
+        }
+      }
+    }
+    final apiKey = await ref.read(secretStoreProvider).read(provider.keyRef);
+    if (!mounted) return null;
+    if (apiKey == null || apiKey.trim().isEmpty) {
+      await _guideToAi('Provider「${provider.name}」尚未配置 API Key。');
+      return null;
+    }
+    return (provider, apiKey.trim());
+  }
+
+  ExportService _service(String root) => ExportService(
+        llm: LlmClient(),
+        repo: ResumeRepository(root),
+        syncRoot: root,
+        formats: ref.read(settingsProvider).value?.defaultExportFormats,
+      );
+
+  /// 评估 → 针对性修订（重写 spec + 重渲染 + 重评估）。
+  Future<void> _runRevise() async {
+    final doc = _doc;
+    if (doc == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (_meta.evaluation == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('请先运行一次评估再修订。')));
+      return;
+    }
+    final resolved = await _resolveProvider();
+    if (resolved == null) return;
+    final (provider, apiKey) = resolved;
+    final root = ref.read(syncRootProvider).path;
+    if (root == null) return;
+    setState(() => _revising = true);
+    final full = ref.read(fullResumeProvider) ?? doc;
+    final res = await _service(root).revise(
+      meta: _meta,
+      spec: doc,
+      full: full,
+      baseUrl: provider.baseUrl,
+      apiKey: apiKey,
+      model: provider.model,
+    );
+    if (!mounted) return;
+    setState(() => _revising = false);
+    res.when(
+      ok: (meta) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('已按评估修订，重新生成并重评估')),
+        );
+        _meta = meta;
+        _load();
+      },
+      err: (msg, _) => messenger.showSnackBar(SnackBar(content: Text('修订失败：$msg'))),
+    );
+  }
+
+  /// 参考材料图文核对（需 appendix 含图片材料）。
+  Future<void> _checkMaterials() async {
+    final doc = _doc;
+    if (doc == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (doc.appendix.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('本简历未附参考材料附录（生成时勾选「附参考材料附录」）。')),
+      );
+      return;
+    }
+    final resolved = await _resolveProvider();
+    if (resolved == null) return;
+    final (provider, apiKey) = resolved;
+    final root = ref.read(syncRootProvider).path;
+    if (root == null) return;
+    if (!provider.supportsVision) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('当前模型「${provider.name}」不支持图片识别，无法核对材料。')),
+      );
+      return;
+    }
+    setState(() => _checking = true);
+    final res = await _service(root).checkMaterials(
+      doc: doc,
+      baseUrl: provider.baseUrl,
+      apiKey: apiKey,
+      model: provider.model,
+    );
+    if (!mounted) return;
+    setState(() => _checking = false);
+    res.when(
+      ok: (checks) {
+        setState(() => _materialChecks = checks);
+        final updated = _meta.copyWith(materialChecks: checks);
+        _meta = updated;
+        ref.read(resumeLibraryProvider.notifier).saveMeta(updated);
+        messenger.showSnackBar(SnackBar(content: Text('材料核对完成（${checks.length} 条）')));
+      },
+      err: (msg, _) => messenger.showSnackBar(SnackBar(content: Text('核对失败：$msg'))),
     );
   }
 
@@ -226,6 +349,10 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
             const SizedBox(height: 12),
             _segmented(context, eval),
             const SizedBox(height: 12),
+            if (_materialChecks.isNotEmpty) ...[
+              _materialSection(context),
+              const SizedBox(height: 12),
+            ],
             if (_tab == 0)
               ..._fitSections(context, eval.fit)
             else
@@ -237,26 +364,39 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
   }
 
   Widget _aiButton(BuildContext context, List<AiProvider> providers) {
-    final enabled = providers.isNotEmpty && _doc != null && !_aiRunning;
-    final button = FilledButton.icon(
-      onPressed: enabled ? _runAi : null,
-      icon: _aiRunning
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.auto_awesome),
-      label: Text(_aiRunning ? 'AI 评估中…' : 'AI 精评'),
+    final canRun = providers.isNotEmpty && _doc != null;
+    Widget spinner() => const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+    final hasAppendix = _doc?.appendix.isNotEmpty ?? false;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.end,
+        children: [
+          OutlinedButton.icon(
+            onPressed: canRun && !_revising ? _runRevise : null,
+            icon: _revising ? spinner() : const Icon(Icons.auto_fix_high),
+            label: Text(_revising ? '修订中…' : '按评估修订'),
+          ),
+          if (hasAppendix)
+            OutlinedButton.icon(
+              onPressed: canRun && !_checking ? _checkMaterials : null,
+              icon: _checking ? spinner() : const Icon(Icons.fact_check_outlined),
+              label: Text(_checking ? '核对中…' : '材料核对'),
+            ),
+          FilledButton.icon(
+            onPressed: canRun && !_aiRunning ? _runAi : null,
+            icon: _aiRunning ? spinner() : const Icon(Icons.auto_awesome),
+            label: Text(_aiRunning ? 'AI 评估中…' : 'AI 精评'),
+          ),
+        ],
+      ),
     );
-    final row = Align(alignment: Alignment.centerRight, child: button);
-    if (providers.isEmpty) {
-      return Tooltip(
-        message: '未配置 AI Provider，请前往「设置 → AI」',
-        child: row,
-      );
-    }
-    return row;
   }
 
   Widget _segmented(BuildContext context, ResumeEvaluation eval) {
@@ -311,6 +451,36 @@ class _ResumeEvalPageState extends ConsumerState<ResumeEvalPage> {
         ],
       ),
     ];
+  }
+
+  Widget _materialSection(BuildContext context) {
+    final theme = Theme.of(context);
+    Color colorOf(String v) => switch (v) {
+          'ok' => Colors.green.shade600,
+          'weak' => Colors.orange.shade700,
+          'mismatch' => theme.colorScheme.error,
+          _ => theme.colorScheme.onSurfaceVariant,
+        };
+    String labelOf(String v) => switch (v) {
+          'ok' => '材料支持',
+          'weak' => '弱支持',
+          'mismatch' => '与材料不符',
+          _ => '无可用材料',
+        };
+    return _section(
+      context,
+      title: '参考材料图文核对（${_materialChecks.length}）',
+      icon: Icons.fact_check_outlined,
+      children: [
+        for (final m in _materialChecks)
+          ListTile(
+            dense: true,
+            leading: Icon(Icons.circle, size: 12, color: colorOf(m.verdict)),
+            title: Text('[${m.label}] ${labelOf(m.verdict)}'),
+            subtitle: m.note.trim().isEmpty ? null : Text(m.note),
+          ),
+      ],
+    );
   }
 
   Widget _fitHeader(BuildContext context, FitAnalysis fit) {

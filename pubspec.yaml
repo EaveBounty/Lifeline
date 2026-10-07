@@ -2,7 +2,7 @@ name: lifeline
 description: "Lifeline · 履痕 — 个人资料管理软件（数据/配置外部挂载，AI 自动编译简历）。"
 publish_to: 'none'
 
-version: 0.4.2+6
+version: 0.5.0+7
 
 environment:
   sdk: ^3.12.2
@@ -46,6 +46,8 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.2
   open_filex: ^4.7.0
+  share_plus: ^13.0.0
+  package_info_plus: ^10.2.2
   flutter_markdown_plus: ^1.0.3
 
   # 网络 / AI

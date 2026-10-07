@@ -113,10 +113,14 @@ class DocxRenderer extends ResumeRenderer {
       b.writeln(_heading(section.title));
       for (final item in section.items) {
         final meta = (item.meta ?? '').trim();
+        final refs = item.appendixRefs.isEmpty
+            ? ''
+            : '  〔见附录 ${item.appendixRefs.join(', ')}〕';
         b.writeln(_para(
           [
             _Run(item.title, bold: true, size: 24),
             if (meta.isNotEmpty) _Run('  ·  $meta', size: 20),
+            if (refs.isNotEmpty) _Run(refs, size: 18),
           ],
           style: 'Heading2',
         ));
@@ -124,13 +128,43 @@ class DocxRenderer extends ResumeRenderer {
         if (subtitle.isNotEmpty) {
           b.writeln(_para([_Run(subtitle, italic: true, size: 20)]));
         }
+        final fieldLine = item.fields.entries
+            .where((e) => '${e.value}'.trim().isNotEmpty)
+            .map((e) => '${e.key}: ${e.value}')
+            .join('  ·  ');
+        if (fieldLine.isNotEmpty) {
+          b.writeln(_para([_Run(fieldLine, size: 18)]));
+        }
         final desc = (item.description ?? '').trim();
         if (desc.isNotEmpty) b.writeln(_para([_Run(desc)]));
         for (final bullet in item.bullets) {
           b.writeln(_bullet(bullet));
         }
+        if (item.links.isNotEmpty) {
+          b.writeln(_para([
+            _Run(item.links
+                .map((l) => l.label.trim().isEmpty
+                    ? l.url
+                    : '${l.label}: ${l.url}')
+                .join('  ·  '),
+                size: 18),
+          ]));
+        }
         if (item.tags.isNotEmpty) {
           b.writeln(_para([_Run(item.tags.join('  '), size: 18)]));
+        }
+      }
+    }
+
+    if (doc.appendix.isNotEmpty) {
+      b.writeln(_heading(doc.language == 'en' ? 'Appendix' : '附录 · 参考材料'));
+      for (final entry in doc.appendix) {
+        b.writeln(_para([_Run('[${entry.label}] ${entry.title}', bold: true, size: 20)]));
+        if ((entry.note ?? '').trim().isNotEmpty) {
+          b.writeln(_para([_Run(entry.note!.trim(), size: 18)]));
+        }
+        for (final rel in entry.materials) {
+          b.writeln(_bullet(rel));
         }
       }
     }

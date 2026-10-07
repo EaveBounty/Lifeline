@@ -11,6 +11,17 @@ class ResumeContact {
   Map<String, dynamic> toJson() => {'label': label, 'value': value, 'url': url};
 }
 
+/// 条目级外部链接。
+class ResumeLink {
+  final String label;
+  final String url;
+  const ResumeLink({this.label = '', required this.url});
+
+  Map<String, dynamic> toJson() => {'label': label, 'url': url};
+  factory ResumeLink.fromJson(Map<String, dynamic> j) =>
+      ResumeLink(label: '${j['label'] ?? ''}', url: '${j['url'] ?? ''}');
+}
+
 /// 头部。
 class ResumeHeader {
   final String name;
@@ -47,6 +58,12 @@ class ResumeItem {
   final List<String> attachments;
   final List<String> tags;
 
+  /// 条目级链接（GitHub / 论文 / 作品等）。
+  final List<ResumeLink> links;
+
+  /// 参考材料附录交叉引用标签（如 `A-1`）。
+  final List<String> appendixRefs;
+
   /// 回指来源记录，便于追溯与定向裁剪。
   final String? sourceRecordId;
   final String categorySlug;
@@ -64,6 +81,8 @@ class ResumeItem {
     this.fields = const {},
     this.attachments = const [],
     this.tags = const [],
+    this.links = const [],
+    this.appendixRefs = const [],
     this.sourceRecordId,
     required this.categorySlug,
     this.weight = 1.0,
@@ -79,10 +98,80 @@ class ResumeItem {
         'fields': fields,
         'attachments': attachments,
         'tags': tags,
+        'links': links.map((l) => l.toJson()).toList(),
+        'appendix_refs': appendixRefs,
         'source_record_id': sourceRecordId,
         'category_slug': categorySlug,
         'weight': weight,
       };
+
+  ResumeItem copyWith({
+    List<String>? attachments,
+    List<String>? appendixRefs,
+    List<String>? tags,
+    List<String>? bullets,
+    String? description,
+  }) =>
+      ResumeItem(
+        id: id,
+        title: title,
+        subtitle: subtitle,
+        meta: meta,
+        description: description ?? this.description,
+        bullets: bullets ?? this.bullets,
+        fields: fields,
+        attachments: attachments ?? this.attachments,
+        tags: tags ?? this.tags,
+        links: links,
+        appendixRefs: appendixRefs ?? this.appendixRefs,
+        sourceRecordId: sourceRecordId,
+        categorySlug: categorySlug,
+        weight: weight,
+      );
+}
+
+/// 参考材料附录条目：把某条经历/声称的佐证材料汇总为一页。
+class ResumeAppendixEntry {
+  /// 标签（如 `A-1`），正文以此交叉引用。
+  final String label;
+
+  /// 关联的来源记录 id（可空）。
+  final String? recordId;
+
+  /// 标题（通常是关联条目的 title）。
+  final String title;
+
+  /// 佐证材料相对路径（相对同步根）。
+  final List<String> materials;
+
+  /// 对照说明/AI 核对备注。
+  final String? note;
+
+  const ResumeAppendixEntry({
+    required this.label,
+    this.recordId,
+    required this.title,
+    this.materials = const [],
+    this.note,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'record_id': recordId,
+        'title': title,
+        'materials': materials,
+        'note': note,
+      };
+
+  factory ResumeAppendixEntry.fromJson(Map<String, dynamic> j) =>
+      ResumeAppendixEntry(
+        label: '${j['label'] ?? ''}',
+        recordId: j['record_id'] as String?,
+        title: '${j['title'] ?? ''}',
+        materials:
+            (j['materials'] as List?)?.map((e) => '$e').toList() ?? const [],
+        note: j['note'] as String?,
+      );
 }
 
 /// 章节。
@@ -125,6 +214,9 @@ class ResumeDocument {
   /// 是否为定向裁剪版本。
   final bool tailored;
 
+  /// 参考材料附录（按需；空表示无附录）。
+  final List<ResumeAppendixEntry> appendix;
+
   const ResumeDocument({
     this.schemaVersion = 1,
     required this.header,
@@ -135,6 +227,7 @@ class ResumeDocument {
     this.language = 'zh',
     this.meta = const {},
     this.tailored = false,
+    this.appendix = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -147,6 +240,7 @@ class ResumeDocument {
         'language': language,
         'meta': meta,
         'tailored': tailored,
+        'appendix': appendix.map((a) => a.toJson()).toList(),
       };
 
   factory ResumeDocument.fromJson(Map<String, dynamic> j) {
@@ -194,6 +288,14 @@ class ResumeDocument {
                               attachments:
                                   (im['attachments'] as List?)?.map((b) => '$b').toList() ?? const [],
                               tags: (im['tags'] as List?)?.map((b) => '$b').toList() ?? const [],
+                              links: (im['links'] as List?)
+                                      ?.map((b) => ResumeLink.fromJson((b as Map).cast<String, dynamic>()))
+                                      .toList() ??
+                                  const [],
+                              appendixRefs: (im['appendix_refs'] as List?)
+                                      ?.map((b) => '$b')
+                                      .toList() ??
+                                  const [],
                               sourceRecordId: im['source_record_id'] as String?,
                               categorySlug: '${im['category_slug'] ?? ''}',
                               weight: (im['weight'] as num?)?.toDouble() ?? 1.0,
@@ -209,6 +311,10 @@ class ResumeDocument {
       language: (j['language'] ?? 'zh') as String,
       meta: (j['meta'] as Map?)?.cast<String, dynamic>() ?? const {},
       tailored: (j['tailored'] ?? false) as bool,
+      appendix: (j['appendix'] as List?)
+              ?.map((e) => ResumeAppendixEntry.fromJson((e as Map).cast<String, dynamic>()))
+              .toList() ??
+          const [],
     );
   }
 }
