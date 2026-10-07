@@ -16,6 +16,7 @@ import 'data/config/app_config.dart';
 import 'data/providers.dart';
 import 'data/repositories/root_manager.dart';
 import 'dev/demo_seed.dart';
+import 'services/net/net_prefs.dart';
 
 /// 持有语义句柄，避免被 GC 回收导致 Web 语义树关闭（浏览器测试/无障碍依赖）。
 final List<SemanticsHandle> _semanticsHandles = <SemanticsHandle>[];
@@ -29,6 +30,7 @@ Future<void> main() async {
     _semanticsHandles.add(SemanticsBinding.instance.ensureSemantics());
   }
   setupLogging(debug: true);
+  await NetPrefs.apply();
 
   final config = await AppConfig.load();
 

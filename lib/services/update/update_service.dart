@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/platform/io_platform.dart';
+import '../../core/platform/net_proxy.dart';
 import '../../core/result.dart';
 
 /// 一次更新检查的结果。
@@ -46,7 +47,9 @@ class UpdateService {
             Dio(BaseOptions(
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 20),
-            ));
+            )) {
+    configureProxy(_dio);
+  }
 
   final Dio _dio;
 

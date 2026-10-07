@@ -2,15 +2,18 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/platform/net_proxy.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/ai_provider.dart';
 import '../../data/providers.dart';
 import '../../services/ai/llm_client.dart';
+import '../../services/net/net_prefs.dart';
 import '../../services/secrets/secret_store.dart';
 import '../../services/secrets/vault_providers.dart';
 
@@ -24,11 +27,30 @@ class AiSettingsPage extends ConsumerStatefulWidget {
 class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
   String? _testing;
   bool _probedSecrets = false;
+  final TextEditingController _proxyCtrl = TextEditingController();
+  String? _autoProxy;
 
   @override
   void initState() {
     super.initState();
     _probeSecrets();
+    _loadProxy();
+  }
+
+  Future<void> _loadProxy() async {
+    final saved = await NetPrefs.load();
+    if (mounted) {
+      setState(() {
+        _proxyCtrl.text = saved ?? '';
+        _autoProxy = detectEnvProxy();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _proxyCtrl.dispose();
+    super.dispose();
   }
 
   /// 触发一次读以判定密钥库是否降级（`usingFallback` 为副作用状态）。
@@ -174,6 +196,7 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 30),
       ));
+      configureProxy(dio);
       final res = await dio.post(
         endpoint,
         data: {
@@ -241,7 +264,13 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
                     _fallbackWarning(context),
                     const SizedBox(height: 4),
                   ],
+                  if (kIsWeb) ...[
+                    _webCorsNotice(context),
+                    const SizedBox(height: 4),
+                  ],
                   _vaultSyncBanner(context),
+                  const SizedBox(height: 4),
+                  _proxyCard(context),
                   const SizedBox(height: 4),
                   SectionCard(
                     title: '模型厂商',
@@ -316,6 +345,80 @@ class _AiSettingsPageState extends ConsumerState<AiSettingsPage> {
               child: Text(
                 '系统密钥库不可用，密钥已降级保存到本地权限文件。'
                 '该文件不同步、但保护强度较低；建议安装 libsecret / gnome-keyring 后重新保存密钥。',
+                style: TextStyle(color: scheme.onErrorContainer, height: 1.45),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 网络代理设置（可选）：解决 Dart HttpClient 不读系统代理导致的连接失败。
+  Widget _proxyCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SectionCard(
+      title: '网络代理（可选）',
+      icon: Icons.cable_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '若公司网络 / VPN 需要代理才能出网（Windows 上 Clash、v2ray 等的「系统代理」很常见），'
+            '在此填写代理地址。留空则自动识别系统 / 环境代理。',
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.45, fontSize: 12.5),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _proxyCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '代理地址',
+                    hintText: 'http://127.0.0.1:7890',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () async {
+                  await NetPrefs.save(_proxyCtrl.text);
+                  _snack('代理已保存并生效');
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          ),
+          if ((_autoProxy ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('检测到系统 / 环境代理：$_autoProxy',
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 网页版跨域提示：浏览器默认禁止网页直连 AI 厂商接口。
+  Widget _webCorsNotice(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.public_off, color: scheme.onErrorContainer),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '当前是网页版：浏览器安全策略（CORS）通常禁止网页直接调用 AI 厂商接口（含 DeepSeek）。'
+                '若连接失败，请改用「桌面版 / 手机版」App，或把 base_url 指向允许跨域的转发地址。',
                 style: TextStyle(color: scheme.onErrorContainer, height: 1.45),
               ),
             ),

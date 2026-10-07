@@ -20,7 +20,7 @@ import '../../services/update/update_service.dart';
 import '../update/update_dialog.dart';
 
 /// 版本号：与 pubspec.yaml 的 version 保持一致（未引入 package_info_plus）。
-const String _appVersion = '0.6.0+9';
+const String _appVersion = '0.6.1+10';
 const String _githubUrl = 'https://github.com/EaveBounty/Lifeline';
 const String _license = 'PolyForm Noncommercial 1.0.0';
 

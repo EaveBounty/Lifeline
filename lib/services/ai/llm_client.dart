@@ -7,8 +7,10 @@ library;
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../../core/platform/io_platform.dart';
+import '../../core/platform/net_proxy.dart';
 import '../../core/result.dart';
 
 /// 多模态内容片段 → OpenAI chat 格式。
@@ -59,7 +61,9 @@ class LlmClient {
             Dio(BaseOptions(
               connectTimeout: const Duration(seconds: 30),
               receiveTimeout: const Duration(seconds: 180),
-            ));
+            )) {
+    configureProxy(_dio);
+  }
 
   final Dio _dio;
 
@@ -125,22 +129,29 @@ class LlmClient {
 
 /// 把底层网络异常转成可诊断的中文说明。
 String describeDioError(DioException e) {
-  final extra = (e.message ?? '').trim();
-  final suffix = extra.isEmpty ? '' : '（$extra）';
-  return switch (e.type) {
+  final raw = (e.error ?? e.message ?? '').toString().trim();
+  final detail = raw.isEmpty ? '' : '\n底层：$raw';
+  final isNetworkish = e.response == null;
+  if (kIsWeb && isNetworkish) {
+    return '网页端被浏览器拦截（很可能是跨域 CORS）：多数 AI 厂商（含 DeepSeek）'
+        '不允许浏览器直接调用其接口，并非密钥或地址错误。'
+        '请改用「桌面版 / 手机版」App；或把 base_url 指向一个允许跨域的转发/网关地址。$detail';
+  }
+  final friendly = switch (e.type) {
     DioExceptionType.connectionTimeout =>
-      '连接超时：无法到达服务器，请检查网络或代理$suffix',
-    DioExceptionType.sendTimeout => '发送超时$suffix',
-    DioExceptionType.receiveTimeout => '响应超时：服务器无响应$suffix',
-    DioExceptionType.badCertificate => 'TLS 证书校验失败$suffix',
+      '连接超时：无法到达服务器，请检查网络或代理',
+    DioExceptionType.sendTimeout => '发送超时',
+    DioExceptionType.receiveTimeout => '响应超时：服务器无响应',
+    DioExceptionType.badCertificate => 'TLS 证书校验失败（可能被代理中间人拦截）',
     DioExceptionType.connectionError =>
-      '无法连接：域名解析失败，或被网络/防火墙/代理拦截。请检查网络、代理与 base_url$suffix',
-    DioExceptionType.badResponse => '服务器返回异常$suffix',
-    DioExceptionType.cancel => '请求已取消$suffix',
+      '无法连接：域名解析失败，或被网络/防火墙/代理拦截。请检查网络、代理与 base_url',
+    DioExceptionType.badResponse => '服务器返回异常',
+    DioExceptionType.cancel => '请求已取消',
     DioExceptionType.unknown =>
-      '未知网络错误：可能是域名解析失败、CORS（网页端）或证书问题。请检查网络与 base_url$suffix',
-    _ => '网络错误$suffix',
+      '未知网络错误：可能是域名解析失败、TLS 证书问题或系统代理异常',
+    _ => '网络错误',
   };
+  return '$friendly（类型 ${e.type.name}）$detail';
 }
 
 String _briefBody(dynamic data) {
