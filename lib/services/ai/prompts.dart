@@ -114,7 +114,8 @@ const String rewriteSystemPrompt = '''
 - 章节按计划的 section_priority 排序；只保留至少 1 条有效内容的章节。
 - 术语自然融入 ats_keywords，禁止关键词堆砌。
 - 整体估算行数 ≤ budget_lines；超了宁可再删，不要塞满。
-- summary 1–2 句：定位（我是谁/做什么）+ 2-3 个最强证据，不要复述简历。
+- summary 必须**由你重写**（不要照抄原始 profile 里的长简介）：≤ 2 句、≤ 60 字，
+  只写定位（我是谁/做什么）+ 2-3 个最强证据的凝练概括。
 
 【输出】ResumeDocument JSON（结构与输入一致），"tailored":true。无围栏、无多余文本。
 ''';

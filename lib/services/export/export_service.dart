@@ -695,21 +695,60 @@ class ExportService {
       return t;
     }
 
-    final meta = clean(it.meta);
+    // meta 常为「机构 · 角色 · 地点 · 时间」拼接：逐段剔除占位/空段。
+    String? cleanMeta(String? s) {
+      final t = (s ?? '').trim();
+      if (t.isEmpty) return null;
+      final parts = t
+          .split(RegExp(r'[·|]'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .where((e) =>
+              !generic.contains(e.toLowerCase()) &&
+              !generic.contains(bare(e).toLowerCase()))
+          .toList();
+      if (parts.isEmpty) return null;
+      return parts.join(' · ');
+    }
+
+    final meta = cleanMeta(it.meta);
     var subtitle = clean(it.subtitle);
     // 标题行已含机构时，去掉重复的 subtitle（避免 PDF/LaTeX 重复显示）。
     if (subtitle != null && meta != null && meta.contains(subtitle)) {
       subtitle = null;
     }
 
+    // fields：剔除敏感/噪声键，限制条数（避免单页被字段行挤爆）。
+    const dropKeys = {
+      'id_number', 'student_no', 'degree_cert_no', 'degree_award_no',
+      'registration_no', 'cert_no', 'credential_id', 'credit_code',
+      'legal_rep', 'subcategory',
+    };
+    final fields = <String, dynamic>{};
+    var fc = 0;
+    for (final e in it.fields.entries) {
+      if (dropKeys.contains(e.key.toLowerCase())) continue;
+      if ('${e.value}'.trim().isEmpty) continue;
+      fields[e.key] = e.value;
+      if (++fc >= 6) break;
+    }
+
+    // 自由文本里的占位机构词（数据缺失时的兜底）替换为中性表述。
+    String tidy(String s) =>
+        s.replaceAll('实习单位', '该单位').replaceAll('贵单位', '贵公司');
+    final description = (it.description ?? '').trim().isEmpty
+        ? it.description
+        : tidy(it.description!);
+    final bullets = [for (final b in it.bullets) tidy(b)];
+
     return ResumeItem(
       id: it.id,
       title: it.title,
       subtitle: subtitle,
       meta: meta,
-      description: it.description,
-      bullets: it.bullets,
-      fields: it.fields,
+      description: description,
+      bullets: bullets,
+      fields: fields,
       attachments: it.attachments,
       tags: it.tags,
       links: it.links,
@@ -926,7 +965,8 @@ class ExportService {
         appendix: doc.appendix,
       );
 
-  /// 严格页数：渲染计量 → 确定性裁剪 → 重渲染，直至 ≤ pageLimit 或无可再裁。
+  /// 严格页数：先规整「版面杂项」（summary/strengths），再对「保留条目数」二分搜索，
+  /// 找到能塞进 pageLimit 的**最大**条目数——确定性、不编造、尽量少裁。
   Future<ResumeDocument> _fitToPages(
     ResumeDocument doc,
     ExportRequest request,
@@ -936,50 +976,108 @@ class ExportService {
     final limit = request.pageLimit;
     if (limit <= 0) return doc;
     final renderer = DartPdfRenderer(templateId: request.templateId);
-    var current = doc;
-    for (var attempt = 0; attempt < 8; attempt++) {
-      final res = await renderer.render(current, options: {
+
+    Future<int> pagesOf(ResumeDocument d) async {
+      final res = await renderer.render(d, options: {
         'language': request.language,
         'pageLimit': limit,
         'templateId': request.templateId,
         'syncRoot': syncRoot,
         'omitAppendix': true,
       });
-      if (res.isErr) return current;
-      final pages = countPdfPages(res.valueOrNull!);
-      if (pages <= limit) {
-        if (attempt > 0) onStage?.call('已压缩至 $pages 页');
-        return current;
-      }
-      final trimmed = _trimOnce(current, plan, request, pages, limit);
-      if (_contentUnits(trimmed) >= _contentUnits(current)) {
-        appLog.warning('页数仍超（$pages 页）但无可再裁，接受当前结果');
-        return current;
-      }
-      current = trimmed;
-      onStage?.call('压缩页数：$pages → 目标 $limit');
+      return res.isErr ? -1 : countPdfPages(res.valueOrNull!);
     }
-    return current;
+
+    var current = _normalizeForPages(doc, limit);
+    final fullPages = await pagesOf(current);
+    if (fullPages >= 0 && fullPages <= limit) return current;
+
+    final ranked = _rankedItems(current, plan, request);
+    if (ranked.isEmpty) return current;
+
+    var lo = 1, hi = ranked.length, best = 1;
+    var bestDoc = _keepTopK(current, ranked, 1);
+    while (lo <= hi) {
+      final k = (lo + hi) ~/ 2;
+      final candidate = _keepTopK(current, ranked, k);
+      final pages = await pagesOf(candidate);
+      if (pages >= 0 && pages <= limit) {
+        best = k;
+        bestDoc = candidate;
+        lo = k + 1;
+      } else {
+        hi = k - 1;
+      }
+    }
+    onStage?.call('页数 ${fullPages < 0 ? '?' : fullPages} → 保留 $best 条');
+    // 极端：即便只留 1 条仍超页 → 进一步砍 strengths/summary。
+    if (await pagesOf(bestDoc) > limit) {
+      bestDoc = _trimChrome(bestDoc);
+    }
+    return bestDoc;
   }
 
-  int _contentUnits(ResumeDocument doc) {
-    var n = 0;
-    for (final s in doc.sections) {
-      for (final i in s.items) {
-        n += 1 + i.bullets.length;
-      }
-    }
-    return n;
+  /// 版面杂项规整：strengths 截断、summary 限长（单页时更狠）。
+  ResumeDocument _normalizeForPages(ResumeDocument doc, int limit) {
+    final maxStrengths = (limit * 3).clamp(2, 8);
+    final strengths = doc.strengths.length > maxStrengths
+        ? doc.strengths.sublist(0, maxStrengths)
+        : doc.strengths;
+    return _docWith(
+      doc,
+      summary: _shortSummary(doc.summary, limit * 90),
+      strengths: strengths,
+    );
   }
 
-  /// 一次确定性裁剪：按「保留价值」从低到高移除 bullet（每项至少留 1），
-  /// 需要更多再移除低优先级整条；lead / 必含项尽量保留。
-  ResumeDocument _trimOnce(
+  ResumeDocument _trimChrome(ResumeDocument doc) => _docWith(
+        doc,
+        summary: _shortSummary(doc.summary, 60),
+        strengths: doc.strengths.take(1).toList(),
+      );
+
+  ResumeDocument _docWith(
+    ResumeDocument doc, {
+    String? summary,
+    List<String>? strengths,
+    List<ResumeSection>? sections,
+  }) =>
+      ResumeDocument(
+        header: doc.header,
+        summary: summary ?? doc.summary,
+        strengths: strengths ?? doc.strengths,
+        sections: sections ?? doc.sections,
+        generatedAt: doc.generatedAt,
+        language: doc.language,
+        meta: doc.meta,
+        tailored: doc.tailored,
+        appendix: doc.appendix,
+      );
+
+  String? _shortSummary(String? s, int max) {
+    final t = (s ?? '').trim();
+    if (t.isEmpty || t.length <= max) return s;
+    // 优先保留完整第一句（句号/分号/换行/英文句点）。
+    for (final sep in ['。', '；', '\n', '. ']) {
+      final i = t.indexOf(sep);
+      if (i > 15 && i + sep.length <= max * 1.5) {
+        return t.substring(0, i + sep.length).trim();
+      }
+    }
+    // 退而求其次：在逗号/空格处收尾，避免截断到「书名号/括号」中间。
+    final cut = t.substring(0, max);
+    for (final sep in ['，', '、', '；', ' ']) {
+      final i = cut.lastIndexOf(sep);
+      if (i > max ~/ 2) return '${cut.substring(0, i)}…';
+    }
+    return '$cut…';
+  }
+
+  /// 全局条目排序：按取舍价值降序（lead/高 priority/靠前章节/靠前条目在前）。
+  List<_RankedItem> _rankedItems(
     ResumeDocument doc,
     TailorPlan plan,
     ExportRequest request,
-    int pages,
-    int limit,
   ) {
     final byId = <String, PlanDecision>{};
     for (final d in plan.decisions) {
@@ -988,17 +1086,15 @@ class ExportService {
     }
     final mustKeep =
         request.mustInclude.map((e) => e.trim().toLowerCase()).toSet();
-
     final secCount = doc.sections.length;
-    final bullets = <_TrimUnit>[];
-    final items = <_TrimUnit>[];
+    final out = <_RankedItem>[];
     for (var si = 0; si < doc.sections.length; si++) {
-      final section = doc.sections[si];
-      for (var ii = 0; ii < section.items.length; ii++) {
-        final it = section.items[ii];
+      final items = doc.sections[si].items;
+      for (var ii = 0; ii < items.length; ii++) {
+        final it = items[ii];
         final d = byId[it.sourceRecordId ?? it.id];
         final dec = d?.decision ?? 'keep';
-        final prio = (switch (dec) {
+        final base = (switch (dec) {
                   'lead' => 1.0,
                   'keep' => 0.7,
                   'compress' => 0.4,
@@ -1006,87 +1102,43 @@ class ExportService {
                 }) *
                 0.7 +
             (d?.priority ?? 0.5) * 0.3;
-        final base = prio * 1000 + (secCount - si) * 10 - ii;
-        // bullet：仅第 2 条起可裁（每项至少保留首条）。
-        for (var bi = 1; bi < it.bullets.length; bi++) {
-          bullets.add(_TrimUnit(si, ii, bi, base - bi));
-        }
-        final isLead = dec == 'lead';
+        var value = base * 1000 + (secCount - si) * 10 - ii;
         final hay = '${it.title} ${it.tags.join(' ')}'.toLowerCase();
-        final isMust = mustKeep.any((m) => m.isNotEmpty && hay.contains(m));
-        if (!isLead && !isMust) {
-          items.add(_TrimUnit(si, ii, -1, base - 0.5));
-        }
+        if (mustKeep.any((m) => m.isNotEmpty && hay.contains(m))) value += 1e6;
+        if (dec == 'lead') value += 500;
+        out.add(_RankedItem(si, ii, value));
       }
     }
-    final totalUnits = _contentUnits(doc);
-    final totalItems =
-        doc.sections.fold<int>(0, (a, s) => a + s.items.length);
-    // 目标移除量：按超页比例估算，软化并设上限，避免一刀切到空。
-    var need = ((pages - limit) / pages * totalUnits * 0.6).ceil();
-    final cap = (totalUnits * 0.35).ceil();
-    if (need > cap) need = cap;
-    if (need < 1) need = 1;
+    out.sort((a, b) => b.value.compareTo(a.value));
+    return out;
+  }
 
-    final toRemove = <_TrimUnit>[];
-    for (final u in [...bullets]..sort((a, b) => a.keep.compareTo(b.keep))) {
-      if (toRemove.length >= need) break;
-      toRemove.add(u);
+  /// 仅保留价值最高的前 [k] 个条目（保持章节顺序；空章节剔除）。
+  ResumeDocument _keepTopK(
+    ResumeDocument doc,
+    List<_RankedItem> ranked,
+    int k,
+  ) {
+    final keep = <String>{};
+    for (var i = 0; i < k && i < ranked.length; i++) {
+      keep.add('${ranked[i].si}:${ranked[i].ii}');
     }
-    // 仅当 bullet 仍不足时才动整条，并保留 floor 个条目（不裁空）。
-    final floor = (limit * 2).clamp(1, totalItems);
-    var itemRemovals = 0;
-    if (toRemove.length < need) {
-      for (final u in [...items]..sort((a, b) => a.keep.compareTo(b.keep))) {
-        if (toRemove.length >= need) break;
-        if (totalItems - itemRemovals <= floor) break;
-        toRemove.add(u);
-        itemRemovals++;
-      }
-    }
-    final dropBullet = <String>{};
-    final dropItem = <String>{};
-    for (final u in toRemove) {
-      if (u.bi >= 0) {
-        dropBullet.add('${u.si}:${u.ii}:${u.bi}');
-      } else {
-        dropItem.add('${u.si}:${u.ii}');
-      }
-    }
-
     final sections = <ResumeSection>[];
     for (var si = 0; si < doc.sections.length; si++) {
-      final section = doc.sections[si];
-      final its = <ResumeItem>[];
-      for (var ii = 0; ii < section.items.length; ii++) {
-        if (dropItem.contains('$si:$ii')) continue;
-        final it = section.items[ii];
-        final bs = <String>[];
-        for (var bi = 0; bi < it.bullets.length; bi++) {
-          if (dropBullet.contains('$si:$ii:$bi')) continue;
-          bs.add(it.bullets[bi]);
-        }
-        its.add(it.copyWith(bullets: bs));
-      }
-      if (its.isEmpty) continue;
+      final s = doc.sections[si];
+      final items = <ResumeItem>[
+        for (var ii = 0; ii < s.items.length; ii++)
+          if (keep.contains('$si:$ii')) s.items[ii],
+      ];
+      if (items.isEmpty) continue;
       sections.add(ResumeSection(
-        key: section.key,
-        title: section.title,
-        order: section.order,
-        items: its,
+        key: s.key,
+        title: s.title,
+        order: s.order,
+        items: items,
       ));
     }
-    return ResumeDocument(
-      header: doc.header,
-      summary: doc.summary,
-      strengths: doc.strengths,
-      sections: sections,
-      generatedAt: doc.generatedAt,
-      language: doc.language,
-      meta: doc.meta,
-      tailored: doc.tailored,
-      appendix: doc.appendix,
-    );
+    return _docWith(doc, sections: sections);
   }
 
   Map<String, dynamic> _buildFeedback(
@@ -1174,11 +1226,10 @@ class ExportService {
   }
 }
 
-/// 页数裁剪候选单元：`bi < 0` 表示整条 item，否则表示裁掉第 [bi] 条 bullet。
-class _TrimUnit {
-  const _TrimUnit(this.si, this.ii, this.bi, this.keep);
+/// 全局排序后的条目：`si` 章节序、`ii` 条目序、`value` 保留价值（越大越该留）。
+class _RankedItem {
+  const _RankedItem(this.si, this.ii, this.value);
   final int si;
   final int ii;
-  final int bi;
-  final double keep;
+  final double value;
 }

@@ -678,7 +678,8 @@ class DartPdfRenderer extends ResumeRenderer {
         if (subtitle.isNotEmpty) pw.Text(subtitle, style: st.small),
         if (fieldLine.isNotEmpty)
           pw.Text(fieldLine, style: st.small.copyWith(color: st.accent)),
-        if (desc.isNotEmpty) pw.Text(desc, style: st.normal),
+        if (desc.isNotEmpty && !(st.compact && item.bullets.isNotEmpty))
+          pw.Text(desc, style: st.normal),
         if (item.bullets.isNotEmpty) ...[
           pw.SizedBox(height: 2),
           for (final bullet in item.bullets)
@@ -689,7 +690,7 @@ class DartPdfRenderer extends ResumeRenderer {
             ),
         ],
         if (linkLine.isNotEmpty) pw.Text(linkLine, style: st.small),
-        if (item.tags.isNotEmpty)
+        if (item.tags.isNotEmpty && !st.compact)
           pw.Text(item.tags.join('  '),
               style: st.small.copyWith(color: st.accent)),
       ],
