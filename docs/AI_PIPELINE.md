@@ -300,3 +300,11 @@ AI 评估输出 schema（`evalSystemPrompt`，schema v2）：
 - 2026-10-07 v0.5.0：生产裁剪改用重写的「成品级」`tailorSystemPrompt`（取舍/改写/详略/春秋笔法/结构篇幅），并**接线**岗位调研摘要与 `job_description`；新增 `reviseSystemPrompt`（评估→针对性修订闭环）与 `materialCheckSystemPrompt`（正文声称↔材料图片逐条核对）。导出统一 DartPdf 并内嵌打包 OFL 子集字体（中英），解决中文乱码。
 
 - 2026-10-07 v0.6.0 §3.7 生成架构：改为 **Plan→Rewrite→Validate**。Plan（`planSystemPrompt`）只输出结构化 `TailorPlan`（决策/淘汰理由/排序/预算/ATS 关键词/追问）；Rewrite（`rewriteSystemPrompt`）只做表达、只准引用 facts；Validate（`ExportService._validateAndFix`）做事实守恒（数字⊆原始素材）、删除项清退、bullet 上限。新增 `target_level/career_stage/track` 输入与「先追问再生成」交互；提示词精简、关键指令置首尾。
+
+- 2026-10-14 v0.7.0（实测驱动）：
+  - **严格页数负反馈闭环**：`ExportService._fitToPages` 渲染正文（`omitAppendix`）→ `core/utils/pdf_pages.countPdfPages` 计量实际页数 → `_trimOnce` 按取舍权重确定性裁剪（先降 bullet，每项至少留 1；再删低优先整条，保留 `limit×2` 条底线；`lead`/必含项不动）→ 重渲染，≤8 轮至达标。**附录在裁剪后重建**，使「附件目录」与最终正文严格对应。
+  - **提示词**：`planSystemPrompt` 强化「相关性压倒完整性 + 页数行数预算 + 必须 delete 掉一半」；`rewriteSystemPrompt` 增加反面清单（职责罗列/空话）与正例、结果前置、标题与 meta 去重、行数上限。
+  - **结构**：`_applySectionOrder` 按 `TailorPlan.section_priority` 确定性重排章节；渲染器对 `tailored` 文档不再二次套用模板顺序。
+  - **去占位符**：`_cleanItem` 剔除「实习单位（…）」等无意义机构名并去除重复副标题。
+  - **照片**：`header.photo_path` 由智能选图（`services/photos/`）覆盖；PDF 头部渲染照片。
+  - **LaTeX**：`LatexRenderer`（`ctexart`）+ `LatexCompiler` 桌面端本机编译。

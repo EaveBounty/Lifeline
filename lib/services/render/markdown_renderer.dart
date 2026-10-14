@@ -33,7 +33,9 @@ class MarkdownRenderer extends ResumeRenderer {
   /// 纯函数：IR -> Markdown 字符串；template 影响章节顺序与标题层级。
   String renderString(ResumeDocument doc, {String? templateId}) {
     final template = ResumeTemplates.byId(templateId);
-    final sections = ResumeTemplates.orderSections(doc.sections, template.id);
+    final sections = doc.tailored
+        ? doc.sections
+        : ResumeTemplates.orderSections(doc.sections, template.id);
     // academic/creative 用 H2 作主标题，其余用 H2 亦保持兼容；仅章节顺序随模板变化。
     final b = StringBuffer();
     final h = doc.header;
@@ -84,7 +86,15 @@ class MarkdownRenderer extends ResumeRenderer {
 
     if (doc.appendix.isNotEmpty) {
       b.writeln();
-      b.writeln('## 附录 · 参考材料');
+      b.writeln('## 附录 · 附件目录');
+      for (final entry in doc.appendix) {
+        final names = entry.materials.isEmpty
+            ? '（无）'
+            : entry.materials.map((e) => e.split('/').last).join('、');
+        b.writeln('- **[${entry.label}]** ${entry.title} —— 材料：$names');
+      }
+      b.writeln();
+      b.writeln('## 附录 · 佐证材料');
       for (final entry in doc.appendix) {
         b.writeln();
         b.writeln('**[${entry.label}] ${entry.title}**');

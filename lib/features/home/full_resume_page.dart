@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/platform/file_image.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/resume_doc.dart';
 import '../../data/providers.dart';
 import '../../services/update/update_providers.dart';
 import '../../services/update/update_service.dart';
+import '../attachments/attachment_preview.dart';
 import '../update/update_dialog.dart';
 
 class FullResumePage extends ConsumerStatefulWidget {
@@ -46,6 +48,7 @@ class _FullResumePageState extends ConsumerState<FullResumePage> {
   Widget build(BuildContext context) {
     final doc = ref.watch(fullResumeProvider);
     final profileAsync = ref.watch(profileProvider);
+    final syncRoot = ref.watch(syncRootProvider).path;
 
     return Scaffold(
       appBar: AppBar(
@@ -68,9 +71,9 @@ class _FullResumePageState extends ConsumerState<FullResumePage> {
             onPressed: () => context.push('/records'),
           ),
           IconButton(
-            tooltip: '定向导出',
-            icon: const Icon(Icons.ios_share),
-            onPressed: () => context.push('/export'),
+            tooltip: '照片采集',
+            icon: const Icon(Icons.photo_camera_outlined),
+            onPressed: () => context.push('/photos'),
           ),
           IconButton(
             tooltip: '简历库',
@@ -116,7 +119,7 @@ class _FullResumePageState extends ConsumerState<FullResumePage> {
               ),
             );
           }
-          return _ResumeView(doc: doc);
+          return _ResumeView(doc: doc, syncRoot: syncRoot);
         },
       ),
     );
@@ -124,8 +127,9 @@ class _FullResumePageState extends ConsumerState<FullResumePage> {
 }
 
 class _ResumeView extends StatelessWidget {
-  const _ResumeView({required this.doc});
+  const _ResumeView({required this.doc, this.syncRoot});
   final ResumeDocument doc;
+  final String? syncRoot;
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +139,7 @@ class _ResumeView extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
           children: [
-            _Header(doc: doc),
+            _Header(doc: doc, syncRoot: syncRoot),
             if (doc.summary != null && doc.summary!.trim().isNotEmpty) ...[
               const SizedBox(height: 16),
               SectionCard(
@@ -199,13 +203,18 @@ class _ResumeView extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.doc});
+  const _Header({required this.doc, this.syncRoot});
   final ResumeDocument doc;
+  final String? syncRoot;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final h = doc.header;
+    final photoPath = (h.photoPath ?? '').trim();
+    final photoFile = (syncRoot != null && photoPath.isNotEmpty)
+        ? attachmentFileOf(syncRoot!, photoPath)
+        : null;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -238,8 +247,18 @@ class _Header extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (h.photoPath != null)
-                  const Icon(Icons.account_circle, size: 56),
+                if (photoFile != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 84,
+                        height: 112,
+                        child: fileImage(photoFile, fit: BoxFit.cover),
+                      ),
+                    ),
+                  ),
               ],
             ),
             if (h.contacts.isNotEmpty) ...[

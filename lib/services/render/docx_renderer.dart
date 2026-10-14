@@ -157,7 +157,15 @@ class DocxRenderer extends ResumeRenderer {
     }
 
     if (doc.appendix.isNotEmpty) {
-      b.writeln(_heading(doc.language == 'en' ? 'Appendix' : '附录 · 参考材料'));
+      b.writeln(_heading(doc.language == 'en' ? 'Appendix · Index' : '附录 · 附件目录'));
+      for (final entry in doc.appendix) {
+        final names = entry.materials.isEmpty
+            ? (doc.language == 'en' ? '(none)' : '（无）')
+            : entry.materials.map((e) => e.split('/').last).join('、');
+        b.writeln(_bullet('[${entry.label}] ${entry.title} —— 材料：$names'));
+      }
+      b.writeln(_heading(
+          doc.language == 'en' ? 'Appendix · Supporting Materials' : '附录 · 佐证材料'));
       for (final entry in doc.appendix) {
         b.writeln(_para([_Run('[${entry.label}] ${entry.title}', bold: true, size: 20)]));
         if ((entry.note ?? '').trim().isNotEmpty) {

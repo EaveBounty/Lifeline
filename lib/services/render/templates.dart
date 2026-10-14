@@ -223,7 +223,8 @@ class ResumeTemplates {
 
   /// 各模板的章节优先级关键词（命中越靠前越先渲染）。
   static const Map<String, List<String>> _priority = {
-    'academic-cv': ['publication', 'research', '论文', '科研', '研究', 'education', '教育', 'experience', '项目', 'award'],
+    // 学术 CV：教育背景在前，随后科研产出（论文/专利），再项目/经历。
+    'academic-cv': ['education', '教育', 'publication', 'paper', '论文', '著作', 'research', '科研', 'experience', '项目', 'project', 'award', 'honor', '荣誉'],
     'fresh-graduate': ['education', '教育', 'project', '项目', 'experience', '实习', 'skill', '技能', 'award', 'certificate'],
     'teacher': ['education', '教育', 'certificate', '资格', '证书', 'experience', '教学', '教研', 'skill', 'award'],
     'tech-compact': ['skill', '技能', 'tech', '技术', 'project', '项目', 'experience', '工作', 'education', '教育'],

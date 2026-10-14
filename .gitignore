@@ -56,3 +56,6 @@ secrets.local.yaml
 secrets.local.json
 *.env
 .env*
+
+# 本地真实用户数据（隐私，绝不入库）
+/test/个人信息资料/

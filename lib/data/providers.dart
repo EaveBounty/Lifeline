@@ -24,16 +24,19 @@ import 'models/ai_provider.dart';
 import 'models/app_settings.dart';
 import 'models/attachment.dart';
 import 'models/export_request.dart';
+import 'models/photo.dart';
 import 'models/profile.dart';
 import 'models/profile_record.dart';
 import 'models/record_category.dart';
 import 'models/resume_doc.dart';
 import 'repositories/attachment_repository.dart';
+import 'repositories/photo_repository.dart';
 import 'repositories/profile_repository.dart';
 import 'repositories/records_repository.dart';
 import 'repositories/resume_repository.dart';
 import 'repositories/root_manager.dart';
 import 'repositories/settings_repository.dart';
+import '../services/photos/photo_selector.dart';
 
 /// 必须由 main 覆盖注入。
 final appConfigProvider = Provider<AppConfig>(
@@ -124,6 +127,7 @@ class SyncRootController extends Notifier<SyncRootState> {
     ref.invalidate(profileProvider);
     ref.invalidate(recordsProvider);
     ref.invalidate(attachmentsProvider);
+    ref.invalidate(photosProvider);
     ref.invalidate(resumeLibraryProvider);
   }
 }
@@ -438,6 +442,71 @@ class ResumeLibraryController extends AsyncNotifier<List<ResumeMeta>> {
   }
 }
 
+// --- 照片库 ---
+
+final photosProvider =
+    AsyncNotifierProvider<PhotosController, List<Photo>>(PhotosController.new);
+
+class PhotosController extends AsyncNotifier<List<Photo>> {
+  @override
+  Future<List<Photo>> build() async {
+    final path = ref.watch(syncRootProvider.select((s) => s.path));
+    if (path == null) return const [];
+    return PhotoRepository(path).load();
+  }
+
+  PhotoRepository? _repo() {
+    final path = ref.read(syncRootProvider.select((s) => s.path));
+    return path == null ? null : PhotoRepository(path);
+  }
+
+  /// 导入照片；总信息文档（档案照片）自动采用最新的一张。
+  Future<Photo?> importFile(File source) async {
+    final repo = _repo();
+    if (repo == null) return null;
+    final photo = await repo.importFile(source);
+    if (photo == null) return null;
+    final list = [...await repo.load(), photo];
+    await repo.save(list);
+    state = AsyncData(list);
+    final latest = latestPhoto(list);
+    if (latest != null) await setPrimary(latest.relPath);
+    return photo;
+  }
+
+  Future<void> updatePhoto(Photo photo) async {
+    final repo = _repo();
+    if (repo == null) return;
+    final list = [
+      for (final x in await repo.load())
+        if (x.id == photo.id) photo else x,
+    ];
+    await repo.save(list);
+    state = AsyncData(list);
+  }
+
+  Future<void> delete(String id) async {
+    final repo = _repo();
+    if (repo == null) return;
+    final list = await repo.load();
+    final removed = list.where((x) => x.id == id).toList();
+    await repo.save(list.where((x) => x.id != id).toList());
+    for (final f in removed) {
+      await repo.deleteFile(f);
+    }
+    state = AsyncData(await repo.load());
+  }
+
+  /// 设为「档案照片」（首页完整简历用）。
+  Future<void> setPrimary(String relPath) async {
+    final profile = ref.read(profileProvider).value;
+    if (profile == null) return;
+    await ref.read(profileProvider.notifier).save(
+          profile.copyWith(photoPath: relPath),
+        );
+  }
+}
+
 // --- Secrets ---
 
 final secretStoreProvider = Provider<SecretStore>((ref) {
@@ -457,10 +526,32 @@ final fullResumeProvider = Provider<ResumeDocument?>((ref) {
   final language =
       ref.watch(settingsProvider.select((s) => s.value?.language ?? 'zh'));
   final categories = ref.watch(categoriesProvider);
-  return const ResumeCompiler().compile(
+  final photos = ref.watch(photosProvider).value ?? const <Photo>[];
+  final doc = const ResumeCompiler().compile(
     profile: profile,
     records: records,
     language: language,
     categories: categories,
+  );
+  // 档案照片：优先用户手动指定的 profile.photo_path，否则用最新照片。
+  final chosen = (profile.photoPath ?? '').trim().isNotEmpty
+      ? profile.photoPath
+      : latestPhoto(photos)?.relPath;
+  if (chosen == null || chosen.isEmpty) return doc;
+  return ResumeDocument(
+    header: ResumeHeader(
+      name: doc.header.name,
+      englishName: doc.header.englishName,
+      headline: doc.header.headline,
+      photoPath: chosen,
+      contacts: doc.header.contacts,
+    ),
+    summary: doc.summary,
+    strengths: doc.strengths,
+    sections: doc.sections,
+    generatedAt: doc.generatedAt,
+    language: doc.language,
+    meta: doc.meta,
+    tailored: doc.tailored,
   );
 });

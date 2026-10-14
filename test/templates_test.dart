@@ -69,10 +69,11 @@ void main() {
           ResumeTemplates.all.length);
     });
 
-    test('orderSections 学术前置论文、应届前置教育', () {
+    test('orderSections 学术前置教育、应届前置教育', () {
       final academic =
           ResumeTemplates.orderSections(_doc().sections, 'academic-cv');
-      expect(academic.first.key, 'publications');
+      // 学术 CV：教育背景在前，论文/科研随后（学生简历不应把教育放到最后）。
+      expect(academic.first.key, 'education');
       final fresh =
           ResumeTemplates.orderSections(_doc().sections, 'fresh-graduate');
       expect(fresh.first.key, 'education');

@@ -3,6 +3,7 @@ library;
 
 import 'dart_pdf_renderer.dart';
 import 'docx_renderer.dart';
+import 'latex_renderer.dart';
 import 'markdown_renderer.dart';
 import 'renderer.dart';
 import 'templates.dart';
@@ -29,6 +30,9 @@ List<ResumeRenderer> renderersFor(
       return preferTypstPdf ? [typst, dart] : [dart, typst];
     case 'docx':
       return [DocxRenderer(templateId: t.id)];
+    case 'latex':
+    case 'tex':
+      return [LatexRenderer(templateId: t.id)];
     case 'md':
     case 'markdown':
       return [MarkdownRenderer(templateId: t.id)];

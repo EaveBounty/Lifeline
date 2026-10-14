@@ -9,11 +9,13 @@ import '../../core/widgets/common.dart';
 import '../../core/widgets/term_info.dart';
 import '../../data/models/ai_provider.dart';
 import '../../data/models/export_request.dart';
+import '../../data/models/photo.dart';
 import '../../data/models/target_profile.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/resume_repository.dart';
 import '../../services/ai/llm_client.dart';
 import '../../services/export/export_service.dart';
+import '../../services/photos/photo_selector.dart';
 import '../../services/render/templates.dart';
 import 'template_preview.dart';
 
@@ -53,6 +55,12 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   /// 当前模板；用户手动选择后不再被岗位推荐覆盖。
   String _templateId = ResumeTemplates.defaultId;
   bool _templateTouched = false;
+
+  /// 导出格式（默认仅 PDF；可勾选 Word / LaTeX / Markdown）。
+  final Set<String> _formats = {'pdf'};
+
+  /// 手动指定的封面照片相对路径；null 表示按智能选图。
+  String? _photoRel;
 
   bool _busy = false;
   String? _stage;
@@ -167,8 +175,15 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       llm: LlmClient(),
       repo: ResumeRepository(root),
       syncRoot: root,
-      formats: settings?.defaultExportFormats,
+      formats: _formats.toList(),
     );
+
+    final photos = ref.read(photosProvider).value ?? const <Photo>[];
+    final autoPhoto = selectPhoto(
+      photos,
+      PhotoCriteria(purpose: _purpose, track: _track, careerStage: _careerStage),
+    );
+    final photoPath = _photoRel ?? autoPhoto?.relPath;
 
     // 第一步：先做取舍计划（可能产生追问）。
     setState(() => _stage = '制定取舍计划');
@@ -200,6 +215,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
       existingMeta: widget.existing,
       plan: plan,
       answers: answers,
+      photoPath: photoPath,
       onStage: (stage) {
         if (mounted) setState(() => _stage = stage);
       },
@@ -473,6 +489,10 @@ class _ExportPageState extends ConsumerState<ExportPage> {
               const SizedBox(height: 12),
               _templateCard(),
               const SizedBox(height: 12),
+              _formatsCard(),
+              const SizedBox(height: 12),
+              _photoCard(),
+              const SizedBox(height: 12),
               SectionCard(
                 title: '取舍与强调',
                 icon: Icons.filter_alt_outlined,
@@ -712,6 +732,111 @@ class _ExportPageState extends ConsumerState<ExportPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 输出格式卡片：默认 PDF，可选 Word / LaTeX / Markdown。
+  Widget _formatsCard() {
+    const all = <(String, String)>[
+      ('pdf', 'PDF'),
+      ('docx', 'Word（.docx）'),
+      ('latex', 'LaTeX（.tex，桌面端编译 PDF）'),
+      ('md', 'Markdown'),
+    ];
+    return SectionCard(
+      title: '输出格式',
+      icon: Icons.description_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (id, label) in all)
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _formats.contains(id),
+              title: Text(label),
+              onChanged: (v) => setState(() {
+                if (v == true) {
+                  _formats.add(id);
+                } else {
+                  _formats.remove(id);
+                }
+              }),
+            ),
+          Text(
+            '至少选一个格式；默认仅 PDF。',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 封面照片卡片：默认按「智能选图」，可手动指定。
+  Widget _photoCard() {
+    final photos = ref.watch(photosProvider).value ?? const <Photo>[];
+    if (photos.isEmpty) {
+      return SectionCard(
+        title: '封面照片',
+        icon: Icons.person_outline,
+        child: Text(
+          '照片库为空。可到「照片采集」导入证件照/近照，生成时自动挑选最合适的一张。',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            height: 1.5,
+          ),
+        ),
+      );
+    }
+    final auto = selectPhoto(
+      photos,
+      PhotoCriteria(purpose: _purpose, track: _track, careerStage: _careerStage),
+    );
+    final value = _photoRel ?? '__auto__';
+    return SectionCard(
+      title: '封面照片',
+      icon: Icons.person_outline,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: photos.any((p) => p.relPath == value) ? value : '__auto__',
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: '使用哪张照片',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem(
+                value: '__auto__',
+                child: Text(
+                  auto == null ? '智能选图' : '智能选图（${auto.filename}）',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              for (final p in photos)
+                DropdownMenuItem(
+                  value: p.relPath,
+                  child: Text(p.filename, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: (v) => setState(() {
+              _photoRel = (v == null || v == '__auto__') ? null : v;
+            }),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '智能选图依据：证件照优先、分辨率、比例(3:4)、时间新近、标签与可选 AI 评分。',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 12.5,
+            ),
+          ),
+        ],
       ),
     );
   }

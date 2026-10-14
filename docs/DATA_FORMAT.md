@@ -23,6 +23,7 @@
 ├── lifeline.yaml                  # 设置（YAML，无密钥，可安全同步）
 ├── data/
 │   ├── profile.json               # 单例：身份/联系方式/求职意向/自我评价/偏好
+│   ├── photos.json                # 照片库（证件照/近照，含尺寸/时间/标签，供智能选图）
 │   ├── records/<category>/<uuid>.json     # 一条一文件
 │   ├── index.sqlite 的替代说明：派生索引库已移至 App 私有目录（设备本地、可重建），不在同步根
 │   └── resumes/<resume-id>/
@@ -30,7 +31,9 @@
 │       ├── spec.json              # 该定向简历的 ResumeDocument（裁剪后）
 │       ├── resume.pdf
 │       ├── resume.docx
-│       └── resume.md
+│       ├── resume.md
+│       ├── resume.tex             # LaTeX 源码（可选格式）
+│       └── resume.latex.pdf       # 桌面端本机编译产物（可选）
 ├── attachments/<yyyy>/<sha1[-8]>-<原文件名>   # 相对路径被记录索引
 └── .lifeline/
     ├── state.json                 # schema_version / 迁移记录 / 最近编译状态
@@ -190,8 +193,36 @@ LFV1
 `identity`、`contact`、`career_objective`、`summary`、`online`、`strengths`、`languages_overview`、`interests_overview`、`references_overview`、`custom`。
 
 - 字段结构恒为 `{ key, value, attachments[], source }`；`value` 可为字符串、数字、布尔、列表或映射。
-- `photo_path` 为头像/证件照相对同步根路径（也参与附件索引重建，见 §11）。
+- `photo_path` 为「档案照片」相对同步根路径；照片库见 §4.5；也参与附件索引重建（见 §11）。
 - 每个字段的 `source` 记录 `{type, raw, ref}`，`type ∈ manual/ai/import`。
+
+---
+
+## 4.5 `data/photos.json`（照片库）
+
+```json
+{
+  "schema_version": 1,
+  "photos": [
+    {
+      "id": "<uuid>",
+      "rel_path": "attachments/2026/ab12cd34-证件照.jpg",
+      "filename": "证件照.jpg",
+      "size": 48213, "sha1": "...",
+      "width": 600, "height": 800,
+      "taken_at": "2025-09-01T10:00:00.000",
+      "tags": ["证件照", "正装", "白底"],
+      "id_photo": true,
+      "ai_score": null, "ai_note": null,
+      "created_at": "...", "updated_at": "..."
+    }
+  ]
+}
+```
+
+- 文件本身仍是真相源（复制进 `attachments/<yyyy>/`），本文件只是索引，可重建。
+- `photo_path`（profile）指向「档案照片」；导入新照片时默认取最新一张。
+- 智能选图（`services/photos/photo_selector.dart`）按 **证件照 > 分辨率 > 比例(3:4) > 时间新近 > 标签(正装/白底加分，生活照减分) > 可选 `ai_score`** 加权，返回最合适的一张；导出时以其相对路径覆盖 `header.photo_path`。
 
 ---
 

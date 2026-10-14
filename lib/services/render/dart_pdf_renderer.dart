@@ -74,13 +74,24 @@ class DartPdfRenderer extends ResumeRenderer {
       t.layout == 'academic' ||
       t.layout == 'elegant';
 
-  /// 预加载附录图片（相对同步根），避免在同步的 build 回调中做 IO。
+  /// 预加载封面照片与附录图片（相对同步根），避免在同步的 build 回调中做 IO。
   Future<Map<String, pw.MemoryImage>> _preloadImages(
     ResumeDocument doc,
     String? syncRoot,
   ) async {
     final out = <String, pw.MemoryImage>{};
     if (syncRoot == null) return out;
+    final photo = doc.header.photoPath;
+    if (photo != null && photo.trim().isNotEmpty) {
+      try {
+        final file = File(p.join(syncRoot, photo));
+        if (await file.exists()) {
+          out[photo] = pw.MemoryImage(await file.readAsBytes());
+        }
+      } catch (_) {
+        // 忽略照片读取失败。
+      }
+    }
     for (final entry in doc.appendix) {
       for (final rel in entry.materials) {
         if (!AttachmentTypes.isImage(rel)) continue;
@@ -121,6 +132,7 @@ class DartPdfRenderer extends ResumeRenderer {
     );
 
     final pageLimit = (options['pageLimit'] as num?)?.toInt() ?? 0;
+    final omitAppendix = options['omitAppendix'] == true;
     final compact = layout == 'compact' || pageLimit == 1;
     final size = compact ? 9.0 : 10.0;
     final st = _Styles(
@@ -130,6 +142,11 @@ class DartPdfRenderer extends ResumeRenderer {
       accent: accent,
     );
 
+    final photoPath = doc.header.photoPath;
+    final photo = (photoPath == null || photoPath.trim().isEmpty)
+        ? null
+        : images[photoPath];
+
     final pdf = pw.Document(
       theme: theme,
       title: doc.header.name.isEmpty ? 'Resume' : doc.header.name,
@@ -137,27 +154,29 @@ class DartPdfRenderer extends ResumeRenderer {
       producer: 'Lifeline DartPdfRenderer (${template.id})',
     );
 
-    final sections = ResumeTemplates.orderSections(doc.sections, template.id);
+    final sections = doc.tailored
+        ? doc.sections
+        : ResumeTemplates.orderSections(doc.sections, template.id);
     final content = <pw.Widget>[];
 
     switch (layout) {
       case 'two-column':
         if (_bulk(doc) <= 26) {
-          content.addAll(_twoColumn(doc, sections, st));
+          content.addAll(_twoColumn(doc, sections, st, photo));
         } else {
-          content.addAll(_single(doc, sections, st));
+          content.addAll(_single(doc, sections, st, photo: photo));
         }
       case 'academic':
-        content.add(_headerCentered(doc, st));
+        content.add(_headerCentered(doc, st, photo));
         content.addAll(_academicBody(doc, sections, st));
       case 'creative':
-        content.add(_headerBand(doc, st));
+        content.add(_headerBand(doc, st, photo));
         content.addAll(_creativeBody(doc, sections, st));
       case 'compact':
-        content.add(_headerInline(doc, st));
-        content.addAll(_single(doc, sections, st, plainTitles: true));
+        content.add(_headerInline(doc, st, photo));
+        content.addAll(_single(doc, sections, st, plainTitles: true, photo: photo));
       default:
-        content.addAll(_single(doc, sections, st));
+        content.addAll(_single(doc, sections, st, photo: photo));
     }
 
     pdf.addPage(
@@ -172,7 +191,7 @@ class DartPdfRenderer extends ResumeRenderer {
       ),
     );
 
-    if (doc.appendix.isNotEmpty) {
+    if (doc.appendix.isNotEmpty && !omitAppendix) {
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -200,17 +219,40 @@ class DartPdfRenderer extends ResumeRenderer {
     Map<String, pw.MemoryImage> images,
   ) {
     final en = doc.language == 'en';
+    // 第一段：附件目录（TOC）——与正文中标注的〔A-x〕一一对应。
     final out = <pw.Widget>[
-      _sectionTitle(en ? 'Appendix · Supporting Materials' : '附录 · 参考材料',
+      _sectionTitle(en ? 'Appendix · Index' : '附录 · 附件目录',
           st, _TitleStyle.underline),
       pw.SizedBox(height: 4),
       pw.Text(
         en
-            ? 'Materials below support the claims marked [A-x] in the resume.'
-            : '以下材料用于佐证简历中以〔A-x〕标注的经历/声称。',
+            ? 'Index of supporting materials referenced as [A-x] in the resume.'
+            : '本目录列出正文中以〔A-x〕标注的经历所对应的佐证材料。',
         style: st.small,
       ),
+      pw.SizedBox(height: 6),
     ];
+    for (final entry in doc.appendix) {
+      final names = entry.materials.isEmpty
+          ? (en ? '(no material)' : '（无）')
+          : entry.materials.map(p.basename).join('、');
+      out.add(pw.Padding(
+        padding: const pw.EdgeInsets.only(top: 3),
+        child: pw.Text(
+          '[${entry.label}] ${entry.title}'
+          '  ——  ${en ? 'materials' : '材料'}：$names'
+          '${entry.materials.isEmpty ? '' : '（${entry.materials.length}）'}',
+          style: st.normal,
+        ),
+      ));
+    }
+
+    // 第二段：佐证材料正文（另起一页）。
+    out
+      ..add(pw.NewPage())
+      ..add(_sectionTitle(en ? 'Appendix · Supporting Materials' : '附录 · 佐证材料',
+          st, _TitleStyle.underline))
+      ..add(pw.SizedBox(height: 6));
     for (final entry in doc.appendix) {
       out.add(pw.SizedBox(height: 10));
       out.add(pw.Text('[${entry.label}] ${entry.title}', style: st.bold));
@@ -250,8 +292,12 @@ class DartPdfRenderer extends ResumeRenderer {
     List<ResumeSection> sections,
     _Styles st, {
     bool plainTitles = false,
+    pw.MemoryImage? photo,
   }) {
-    final out = <pw.Widget>[_headerClassic(doc, st), pw.SizedBox(height: 8)];
+    final out = <pw.Widget>[
+      _headerClassic(doc, st, photo),
+      pw.SizedBox(height: 8),
+    ];
     final titleStyle = plainTitles ? _TitleStyle.plain : _TitleStyle.underline;
     out.addAll(_summaryAndStrengths(doc, st));
     for (final s in sections) {
@@ -292,6 +338,7 @@ class DartPdfRenderer extends ResumeRenderer {
     ResumeDocument doc,
     List<ResumeSection> sections,
     _Styles st,
+    pw.MemoryImage? photo,
   ) {
     final sideKeys = {
       'skills', 'certificates', 'languages', 'awards', 'tags',
@@ -304,7 +351,10 @@ class DartPdfRenderer extends ResumeRenderer {
 
     final main = sections.where((s) => !isSide(s)).toList();
     final side = sections.where(isSide).toList();
-    final out = <pw.Widget>[_headerClassic(doc, st), pw.SizedBox(height: 8)];
+    final out = <pw.Widget>[
+      _headerClassic(doc, st, photo),
+      pw.SizedBox(height: 8),
+    ];
     if ((doc.summary ?? '').trim().isNotEmpty) {
       out.addAll([
         _sectionTitle(doc.language == 'en' ? 'Summary' : '个人简介', st,
@@ -349,9 +399,13 @@ class DartPdfRenderer extends ResumeRenderer {
   // header 变体
   // ---------------------------------------------------------------------------
 
-  pw.Widget _headerClassic(ResumeDocument doc, _Styles st) {
+  pw.Widget _headerClassic(
+    ResumeDocument doc,
+    _Styles st,
+    pw.MemoryImage? photo,
+  ) {
     final h = doc.header;
-    return pw.Column(
+    final left = pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(_name(doc),
@@ -368,19 +422,46 @@ class DartPdfRenderer extends ResumeRenderer {
         if (h.contacts.isNotEmpty) ...[
           pw.SizedBox(height: 4),
           pw.Text(_contacts(h), style: st.small),
-          pw.SizedBox(height: 6),
-          pw.Divider(thickness: 1.0, color: st.accent, height: 2),
-        ] else
-          pw.SizedBox(height: 6),
+        ],
+      ],
+    );
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        if (photo != null)
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(child: left),
+              pw.SizedBox(width: 12),
+              pw.Container(
+                width: 72,
+                height: 96,
+                child: pw.Image(photo, fit: pw.BoxFit.cover),
+              ),
+            ],
+          )
+        else
+          left,
+        pw.SizedBox(height: 6),
+        pw.Divider(thickness: 1.0, color: st.accent, height: 2),
       ],
     );
   }
 
-  pw.Widget _headerCentered(ResumeDocument doc, _Styles st) {
+  pw.Widget _headerCentered(
+    ResumeDocument doc,
+    _Styles st,
+    pw.MemoryImage? photo,
+  ) {
     final h = doc.header;
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
+        if (photo != null) ...[
+          pw.Container(width: 72, height: 96, child: pw.Image(photo, fit: pw.BoxFit.cover)),
+          pw.SizedBox(height: 6),
+        ],
         pw.Text(_name(doc),
             textAlign: pw.TextAlign.center,
             style: pw.TextStyle(
@@ -402,12 +483,37 @@ class DartPdfRenderer extends ResumeRenderer {
     );
   }
 
-  pw.Widget _headerBand(ResumeDocument doc, _Styles st) {
+  pw.Widget _headerBand(
+    ResumeDocument doc,
+    _Styles st,
+    pw.MemoryImage? photo,
+  ) {
     final h = doc.header;
     final onAccent = pw.TextStyle(
       font: st.reg,
       color: PdfColors.white,
       fontSize: st.size,
+    );
+    final info = pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(_name(doc),
+            style: pw.TextStyle(
+              font: st.bld,
+              fontSize: st.nameSize + 1,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.white,
+            )),
+        if ((h.englishName ?? '').trim().isNotEmpty)
+          pw.Text(h.englishName!, style: onAccent),
+        if ((h.headline ?? '').trim().isNotEmpty)
+          pw.Text(h.headline!,
+              style: onAccent.copyWith(fontWeight: pw.FontWeight.bold)),
+        if (h.contacts.isNotEmpty) ...[
+          pw.SizedBox(height: 4),
+          pw.Text(_contacts(h), style: onAccent.copyWith(fontSize: st.size - 1)),
+        ],
+      ],
     );
     return pw.Container(
       width: double.infinity,
@@ -416,33 +522,30 @@ class DartPdfRenderer extends ResumeRenderer {
         color: st.accent,
         borderRadius: pw.BorderRadius.circular(5),
       ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(_name(doc),
-              style: pw.TextStyle(
-                font: st.bld,
-                fontSize: st.nameSize + 1,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
-              )),
-          if ((h.englishName ?? '').trim().isNotEmpty)
-            pw.Text(h.englishName!, style: onAccent),
-          if ((h.headline ?? '').trim().isNotEmpty)
-            pw.Text(h.headline!,
-                style: onAccent.copyWith(fontWeight: pw.FontWeight.bold)),
-          if (h.contacts.isNotEmpty) ...[
-            pw.SizedBox(height: 4),
-            pw.Text(_contacts(h), style: onAccent.copyWith(fontSize: st.size - 1)),
-          ],
-        ],
-      ),
+      child: photo == null
+          ? info
+          : pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(child: info),
+                pw.SizedBox(width: 12),
+                pw.Container(
+                  width: 66,
+                  height: 88,
+                  child: pw.Image(photo, fit: pw.BoxFit.cover),
+                ),
+              ],
+            ),
     );
   }
 
-  pw.Widget _headerInline(ResumeDocument doc, _Styles st) {
+  pw.Widget _headerInline(
+    ResumeDocument doc,
+    _Styles st,
+    pw.MemoryImage? photo,
+  ) {
     final h = doc.header;
-    return pw.Column(
+    final column = pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Row(
@@ -466,6 +569,15 @@ class DartPdfRenderer extends ResumeRenderer {
         if (h.contacts.isNotEmpty) pw.Text(_contacts(h), style: st.small),
         pw.SizedBox(height: 6),
         pw.Divider(thickness: 0.8, color: st.accent, height: 2),
+      ],
+    );
+    if (photo == null) return column;
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Expanded(child: column),
+        pw.SizedBox(width: 12),
+        pw.Container(width: 54, height: 72, child: pw.Image(photo, fit: pw.BoxFit.cover)),
       ],
     );
   }

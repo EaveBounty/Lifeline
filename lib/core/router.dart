@@ -12,6 +12,7 @@ import '../features/export/resume_eval_route.dart';
 import '../features/export/resume_manager_page.dart';
 import '../features/home/full_resume_page.dart';
 import '../features/onboarding/sync_guide_page.dart';
+import '../features/photos/photos_page.dart';
 import '../features/records/record_detail_page.dart';
 import '../features/records/record_edit_page.dart';
 import '../features/records/records_page.dart';
@@ -38,6 +39,7 @@ final GoRouter appRouter = GoRouter(
           RecordEditPage(recordId: s.pathParameters['id']!),
     ),
     GoRoute(path: '/attachments', builder: (_, __) => const AttachmentsPage()),
+    GoRoute(path: '/photos', builder: (_, __) => const PhotosPage()),
     GoRoute(path: '/settings', builder: (_, __) => const SettingsPage()),
     GoRoute(path: '/settings/ai', builder: (_, __) => const AiSettingsPage()),
     GoRoute(

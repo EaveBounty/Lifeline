@@ -7,10 +7,14 @@ import 'package:go_router/go_router.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/constants.dart';
 import '../../core/platform/io_platform.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/export_request.dart';
 import '../../data/providers.dart';
+import '../../data/repositories/resume_repository.dart';
+import '../../services/ai/llm_client.dart';
+import '../../services/export/export_service.dart';
 import '../../services/render/templates.dart';
 import 'resume_preview_page.dart';
 
@@ -124,6 +128,9 @@ class _ResumeTile extends ConsumerWidget {
             const PopupMenuItem(value: 'revise', child: Text('按评估修订')),
             const PopupMenuItem(value: 'regen', child: Text('重新生成（更新本份）')),
             const PopupMenuDivider(),
+            const PopupMenuItem(value: 'export', child: Text('导出 / 转换格式…')),
+            const PopupMenuItem(value: 'folder', child: Text('打开所在文件夹')),
+            const PopupMenuDivider(),
             const PopupMenuItem(value: 'notes', child: Text('编辑备注')),
             const PopupMenuItem(value: 'delete', child: Text('删除')),
           ],
@@ -151,6 +158,10 @@ class _ResumeTile extends ConsumerWidget {
       case 'regen':
         context.push('/export', extra: meta);
         return;
+      case 'export':
+        return _exportFormats(context, ref);
+      case 'folder':
+        return _openFolder(context, ref);
       case 'notes':
         return _editNotes(context, ref);
       case 'delete':
@@ -206,6 +217,110 @@ class _ResumeTile extends ConsumerWidget {
     final result = await OpenFilex.open(file.path);
     if (result.type != ResultType.done) {
       messenger.showSnackBar(SnackBar(content: Text('无法打开：${result.message}')));
+    }
+  }
+
+  /// 从已保存的规格重新渲染选定格式（不调用 AI）。
+  Future<void> _exportFormats(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final root = ref.read(syncRootProvider).path;
+    if (root == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('尚未挂载同步根')));
+      return;
+    }
+    final chosen = await _pickFormats(context);
+    if (chosen == null || chosen.isEmpty) return;
+    final repo = ResumeRepository(root);
+    final spec = await repo.loadSpec(meta.id);
+    if (spec == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('找不到该简历的规格文件，请先重新生成')),
+      );
+      return;
+    }
+    final service = ExportService(llm: LlmClient(), repo: repo, syncRoot: root);
+    final res = await service.exportToFormats(
+      meta: meta,
+      spec: spec,
+      formats: chosen,
+    );
+    await ref.read(resumeLibraryProvider.notifier).refresh();
+    messenger.showSnackBar(SnackBar(
+      content: Text(res.isOk
+          ? '已导出：${res.valueOrNull!.keys.join(' / ')}'
+          : res.errorMessage!),
+    ));
+  }
+
+  Future<List<String>?> _pickFormats(BuildContext context) async {
+    const all = <(String, String)>[
+      ('pdf', 'PDF（默认）'),
+      ('docx', 'Word（.docx）'),
+      ('latex', 'LaTeX（.tex，桌面端自动编译 PDF）'),
+      ('md', 'Markdown'),
+    ];
+    final selected = <String>{'pdf'};
+    return showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('导出 / 转换格式'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (id, label) in all)
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: selected.contains(id),
+                  title: Text(label),
+                  onChanged: (v) => setState(() {
+                    if (v == true) {
+                      selected.add(id);
+                    } else {
+                      selected.remove(id);
+                    }
+                  }),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, selected.toList()),
+              child: const Text('导出'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFolder(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final root = ref.read(syncRootProvider).path;
+    if (root == null) return;
+    final dir =
+        p.join(root, SyncLayout.dataDir, SyncLayout.resumesDir, meta.id);
+    if (Platform.isAndroid || Platform.isIOS) {
+      messenger.showSnackBar(SnackBar(content: Text('导出目录：\n$dir')));
+      return;
+    }
+    try {
+      if (Platform.isWindows) {
+        await Process.run('explorer', [dir]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [dir]);
+      } else {
+        await Process.run('xdg-open', [dir]);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('无法打开文件夹：$e')));
+      }
     }
   }
 
