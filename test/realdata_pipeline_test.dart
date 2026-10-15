@@ -20,6 +20,7 @@ import 'package:lifeline/data/repositories/resume_repository.dart';
 import 'package:lifeline/services/ai/llm_client.dart';
 import 'package:lifeline/services/compile/resume_compiler.dart';
 import 'package:lifeline/services/export/export_service.dart';
+import 'package:lifeline/services/export/data_exporter.dart';
 import 'package:lifeline/services/render/dart_pdf_renderer.dart';
 import 'package:lifeline/services/render/latex_compiler.dart';
 import 'package:lifeline/services/render/latex_renderer.dart';
@@ -270,6 +271,19 @@ void main() {
       final compiled = await compileLatex(tex);
       // ignore: avoid_print
       print('真实数据：LaTeX 编译=${compiled == null ? '未编译（无引擎或失败）' : '成功 ${compiled.length} 字节'}');
+
+      // 数据导出 YAML：一行一条经历，且不含内部字段名。
+      final yaml = const DataExporter().build(profile: profile, records: records);
+      expect(yaml.contains('时间线:'), isTrue);
+      expect(yaml.contains('category_slug'), isFalse);
+      expect(yaml.contains('tags'), isFalse);
+      // ignore: avoid_print
+      print('数据导出 YAML 片段:\n${yaml.split('\n').take(16).join('\n')}');
+      // ignore: avoid_print
+      final lines = yaml.split('\n');
+      final ti = lines.indexWhere((l) => l.startsWith('时间线:'));
+      // ignore: avoid_print
+      print('时间线样例:\n${lines.sublist(ti + 1).where((l) => l.startsWith('  - ')).take(4).join('\n')}');
     } finally {
       try {
         await tmp.delete(recursive: true);

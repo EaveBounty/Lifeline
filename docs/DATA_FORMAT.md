@@ -24,6 +24,7 @@
 ├── data/
 │   ├── profile.json               # 单例：身份/联系方式/求职意向/自我评价/偏好
 │   ├── photos.json                # 照片库（证件照/近照，含尺寸/时间/标签，供智能选图）
+│   ├── exports/                   # 「导出数据」产物：lifeline-data-<时间戳>.yaml（一行一条经历，纯文本）
 │   ├── records/<category>/<uuid>.json     # 一条一文件
 │   ├── index.sqlite 的替代说明：派生索引库已移至 App 私有目录（设备本地、可重建），不在同步根
 │   └── resumes/<resume-id>/

@@ -155,7 +155,8 @@ class ResumeCompiler {
   String? _dateRange(String? start, String? end) {
     if (start == null && end == null) return null;
     if (start != null && end != null) return '$start ~ $end';
-    if (start != null) return '$start ~ …';
+    // 只有起点（如论文/奖项的时点事件）→ 只显示起点，避免「2025-12 ~ …」这种尾巴。
+    if (start != null) return start;
     return '~ $end';
   }
 

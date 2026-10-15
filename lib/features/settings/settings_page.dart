@@ -20,7 +20,7 @@ import '../../services/update/update_service.dart';
 import '../update/update_dialog.dart';
 
 /// 版本号：与 pubspec.yaml 的 version 保持一致（未引入 package_info_plus）。
-const String _appVersion = '0.7.1+13';
+const String _appVersion = '0.8.0+14';
 const String _githubUrl = 'https://github.com/EaveBounty/Lifeline';
 const String _license = 'PolyForm Noncommercial 1.0.0';
 
@@ -406,9 +406,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text('记录数：共 ${records.length} 条',
-              style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => context.push('/export-data'),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: const Text('导出数据（YAML，便于复制/再编辑）'),
+            ),
+            const SizedBox(height: 12),
+            Text('记录数：共 ${records.length} 条',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           if (nonZero.isEmpty)
             Text('暂无记录',

@@ -85,6 +85,38 @@ class PhotoRepository {
     }
   }
 
+  /// 把已在同步根内的照片（如 profile.photo_path 指向的文件）纳入库，不复制文件。
+  Future<Photo?> addExisting(String relPath) async {
+    final abs = resolveWithinRoot(rootPath, relPath);
+    if (abs == null) return null;
+    final file = File(abs);
+    if (!await file.exists()) return null;
+    try {
+      final bytes = await file.readAsBytes();
+      final size = await _imageSize(bytes);
+      DateTime? takenAt;
+      try {
+        takenAt = (await file.stat()).modified;
+      } catch (_) {}
+      final now = DateTime.now();
+      return Photo(
+        id: _uuid.v4(),
+        relPath: relPath.replaceAll(r'\', '/'),
+        filename: p.basename(relPath),
+        size: bytes.length,
+        sha1: sha1OfBytes(bytes),
+        width: size?.$1,
+        height: size?.$2,
+        takenAt: takenAt,
+        createdAt: now,
+        updatedAt: now,
+      );
+    } catch (e) {
+      appLog.warning('纳入既有照片失败: $e');
+      return null;
+    }
+  }
+
   /// 从库里移除并删除文件（越界路径拒绝删除）。
   Future<void> deleteFile(Photo photo) async {
     final abs = resolveWithinRoot(rootPath, photo.relPath);

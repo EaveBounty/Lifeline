@@ -51,22 +51,28 @@ class PhotosPage extends ConsumerWidget {
               message: '无法存放照片。',
             );
           }
-          if (list.isEmpty) {
-            return const EmptyState(
-              icon: Icons.person_outline,
-              title: '还没有照片',
-              message: '导入证件照或近照后，生成简历时会按分辨率、时间、标签自动挑选最合适的一张。',
-            );
-          }
+          final inLibrary =
+              primary != null && list.any((p) => p.relPath == primary);
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
             children: [
+              if (primary != null && primary.isNotEmpty) ...[
+                _CurrentPhotoCard(
+                  syncRoot: root,
+                  relPath: primary,
+                  inLibrary: inLibrary,
+                  onAdopt: () =>
+                      ref.read(photosProvider.notifier).addExisting(primary),
+                ),
+                const SizedBox(height: 12),
+              ],
               SectionCard(
                 title: '智能选图规则',
                 icon: Icons.auto_awesome,
                 child: Text(
                   '正式投递优先用「证件照」；分辨率越高、比例越接近 3:4、时间越新，得分越高；'
-                  '标注「正装/白底/蓝底」加分，「生活照/休闲」减分；可选手动指定。',
+                  '标注「正装/白底/蓝底」加分，「生活照/休闲」减分；可选手动指定。'
+                  '首页与简历默认使用「档案照片」（导入新照片会自动设为最新一张）。',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.5,
@@ -74,22 +80,38 @@ class PhotosPage extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 240,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.72,
+              if (list.isEmpty)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        Icon(Icons.person_outline,
+                            size: 40,
+                            color: Theme.of(context).colorScheme.outline),
+                        const SizedBox(height: 8),
+                        const Text('照片库为空，点右下角「导入照片」添加。'),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 240,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.72,
+                  ),
+                  itemCount: list.length,
+                  itemBuilder: (_, i) => _PhotoCard(
+                    photo: list[i],
+                    syncRoot: root,
+                    isPrimary: primary == list[i].relPath,
+                  ),
                 ),
-                itemCount: list.length,
-                itemBuilder: (_, i) => _PhotoCard(
-                  photo: list[i],
-                  syncRoot: root,
-                  isPrimary: primary == list[i].relPath,
-                ),
-              ),
             ],
           );
         },
@@ -334,5 +356,74 @@ class _PhotoCard extends ConsumerWidget {
     if (ok == true) {
       await ref.read(photosProvider.notifier).delete(photo.id);
     }
+  }
+}
+
+/// 顶部：当前「档案照片」（来自 profile.photo_path），可纳入照片库。
+class _CurrentPhotoCard extends StatelessWidget {
+  const _CurrentPhotoCard({
+    required this.syncRoot,
+    required this.relPath,
+    required this.inLibrary,
+    required this.onAdopt,
+  });
+
+  final String syncRoot;
+  final String relPath;
+  final bool inLibrary;
+  final VoidCallback onAdopt;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final file = attachmentFileOf(syncRoot, relPath);
+    return SectionCard(
+      title: '当前档案照片',
+      icon: Icons.account_box_outlined,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 72,
+              height: 96,
+              child: AttachmentThumb(
+                file: file,
+                relPath: relPath,
+                size: double.infinity,
+                onTap: () =>
+                    showAttachmentPreview(context, file: file, relPath: relPath),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(relPath.split('/').last,
+                    style: theme.textTheme.bodySmall),
+                const SizedBox(height: 4),
+                Text(
+                  inLibrary ? '已在照片库中' : '来自 data/profile.json，尚未纳入照片库',
+                  style: TextStyle(
+                      fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                ),
+                if (!inLibrary)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: onAdopt,
+                      icon: const Icon(Icons.library_add_outlined, size: 16),
+                      label: const Text('纳入照片库'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

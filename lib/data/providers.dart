@@ -485,6 +485,19 @@ class PhotosController extends AsyncNotifier<List<Photo>> {
     state = AsyncData(list);
   }
 
+  /// 把已在同步根内的照片（如 profile.photo_path）纳入库。
+  Future<void> addExisting(String relPath) async {
+    final repo = _repo();
+    if (repo == null) return;
+    final list = await repo.load();
+    if (list.any((p) => p.relPath == relPath)) return;
+    final photo = await repo.addExisting(relPath);
+    if (photo == null) return;
+    final next = [...list, photo];
+    await repo.save(next);
+    state = AsyncData(next);
+  }
+
   Future<void> delete(String id) async {
     final repo = _repo();
     if (repo == null) return;

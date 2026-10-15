@@ -7,6 +7,7 @@ import '../data/models/export_request.dart';
 import '../features/ai/capture_page.dart';
 import '../features/attachments/attachments_page.dart';
 import '../features/export/export_page.dart';
+import '../features/export/data_export_page.dart';
 import '../features/export/resume_eval_page.dart';
 import '../features/export/resume_eval_route.dart';
 import '../features/export/resume_manager_page.dart';
@@ -59,6 +60,7 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(path: '/resumes', builder: (_, __) => const ResumeManagerPage()),
+    GoRoute(path: '/export-data', builder: (_, __) => const DataExportPage()),
     GoRoute(
       path: '/resumes/eval',
       builder: (_, s) {
